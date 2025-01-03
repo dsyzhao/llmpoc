@@ -1,0 +1,32 @@
+{
+  "locale": {
+    "id": "en_US",
+    "nluConfidenceThreshold": 0.40,
+    "voice": {
+      "id": "Salli"
+    }
+  },
+  "intents": [
+    {
+      "name": "GetTime",
+      "description": "Intent to get current time",
+      "sampleUtterances": [
+        { "utterance": "What time is it" },
+        { "utterance": "Tell me the time" },
+        { "utterance": "Current time please" },
+        { "utterance": "What's the time now" }
+      ],
+      "fulfillmentCodeHook": {
+        "enabled": true
+      }
+    },
+    {
+      "name": "FallbackIntent",
+      "description": "Default fallback intent",
+      "parentIntentSignature": "AMAZON.FallbackIntent",
+      "fulfillmentCodeHook": {
+        "enabled": true
+      }
+    }
+  ]
+} 

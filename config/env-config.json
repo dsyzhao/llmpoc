@@ -1,0 +1,15 @@
+{
+  "application": "hvt",
+  "environments": {
+    "dev": {
+      "account": "205154476688",
+      "region": "us-east-1",
+      "environment": "dev"
+    },
+    "prod": {
+      "account": "205154476688",
+      "region": "us-east-1",
+      "environment": "prod"
+    }
+  }
+} 
