@@ -23,7 +23,7 @@ pipelines:
           name: Deploy to Dev
           deployment: dev
           script:
-            - pipe: atlassian/aws-oidc-assume-role:1.0.0
+            - pipe: aws/aws-oidc-assume-role:1.1.0
               variables:
                 ROLE_ARN: $AWS_ROLE_ARN
                 AWS_DEFAULT_REGION: 'us-east-1'
