@@ -24,10 +24,13 @@ pipelines:
           deployment: dev
           oidc: true
           script:
-            - pipe: atlassian/aws-oidc-assume-role:1.1.0
-              variables:
-                AWS_OIDC_ROLE_ARN: $AWS_ROLE_ARN
-                AWS_DEFAULT_REGION: 'us-east-1'
+            # Install AWS CLI
+            - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            - unzip awscliv2.zip
+            - ./aws/install
+            # Verify AWS credentials
+            - aws sts get-caller-identity
+            # Install dependencies and deploy
             - npm ci
             - npm run build
             - npm run cdk deploy "hvt-dev-cicd-stack" -- --require-approval never 
