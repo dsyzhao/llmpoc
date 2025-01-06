@@ -5,7 +5,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "cdk": "cdk",
-    "bootstrap": "cdk bootstrap"
+    "bootstrap": "cdk bootstrap",
+    "test": "echo \"No tests specified - skipping tests\" && exit 0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
