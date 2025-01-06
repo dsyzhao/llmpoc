@@ -23,6 +23,9 @@ pipelines:
           name: Deploy to Dev
           deployment: dev
           oidc: true
+          variables:
+            AWS_DEFAULT_REGION: 'us-east-1'
+            AWS_ROLE_ARN: $AWS_ROLE_ARN
           script:
             # Install AWS CLI
             - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
