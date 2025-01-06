@@ -1,9 +1,10 @@
-image: node:18
+image: amazon/aws-cli
 
 definitions:
   steps:
     - step: &build-test
         name: Build and Test
+        image: node:18
         caches:
           - node
         script:
@@ -24,16 +25,15 @@ pipelines:
           deployment: dev
           oidc: true
           script:
-            # Install AWS CLI
-            - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            - unzip awscliv2.zip
-            - ./aws/install
             # Set up AWS OIDC authentication
             - export AWS_REGION=us-east-1
             - export AWS_ROLE_ARN=$AWS_ROLE_ARN
             - export AWS_WEB_IDENTITY_TOKEN_FILE=$(pwd)/web-identity-token
             - echo $BITBUCKET_STEP_OIDC_TOKEN > $(pwd)/web-identity-token
+            # Install Node and npm for CDK
+            - yum install -y nodejs npm
             # Install dependencies and deploy
             - npm ci
             - npm run build
-            - npm run cdk deploy "hvt-dev-cicd-stack" -- --require-approval never 
+            # Use AWS CLI to run CDK directly
+            - npx cdk deploy "hvt-dev-cicd-stack" --require-approval never 
