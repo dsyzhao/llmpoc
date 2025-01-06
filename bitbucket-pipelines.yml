@@ -33,8 +33,6 @@ pipelines:
             - export AWS_ROLE_ARN=$AWS_ROLE_ARN
             - export AWS_WEB_IDENTITY_TOKEN_FILE=$(pwd)/web-identity-token
             - echo $BITBUCKET_STEP_OIDC_TOKEN > $(pwd)/web-identity-token
-            # Verify AWS credentials
-            - aws sts get-caller-identity
             # Install dependencies and deploy
             - npm ci
             - npm run build
