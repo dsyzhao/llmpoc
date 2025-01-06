@@ -22,10 +22,11 @@ pipelines:
       - step:
           name: Deploy to Dev
           deployment: dev
+          oidc: true
           script:
-            - pipe: aws/aws-oidc-assume-role:1.1.0
+            - pipe: atlassian/aws-oidc-assume-role:1.1.0
               variables:
-                ROLE_ARN: $AWS_ROLE_ARN
+                AWS_OIDC_ROLE_ARN: $AWS_ROLE_ARN
                 AWS_DEFAULT_REGION: 'us-east-1'
             - npm ci
             - npm run build
