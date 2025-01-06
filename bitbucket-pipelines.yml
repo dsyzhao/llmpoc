@@ -23,16 +23,16 @@ pipelines:
           name: Deploy to Dev
           deployment: dev
           oidc: true
-          variables:
-            AWS_DEFAULT_REGION: 'us-east-1'
-            AWS_ROLE_ARN: $AWS_ROLE_ARN
           script:
             # Install AWS CLI
             - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
             - unzip awscliv2.zip
             - ./aws/install
-            # Verify AWS credentials
-            - aws sts get-caller-identity
+            # Set up AWS OIDC authentication
+            - export AWS_REGION=us-east-1
+            - export AWS_ROLE_ARN=$AWS_ROLE_ARN
+            - export AWS_WEB_IDENTITY_TOKEN_FILE=$(pwd)/web-identity-token
+            - echo $BITBUCKET_STEP_OIDC_TOKEN > $(pwd)/web-identity-token
             # Install dependencies and deploy
             - npm ci
             - npm run build
