@@ -44,6 +44,4 @@ pipelines:
             # Verify credentials again after assume-role
             - aws sts get-caller-identity
             # Install dependencies and deploy
-            - npm ci
-            - npm run build
             - npm run cdk deploy "hvt-dev-cicd-stack" -- --require-approval never 
