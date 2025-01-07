@@ -33,15 +33,11 @@ pipelines:
             - export AWS_ROLE_ARN=$AWS_ROLE_ARN
             - export AWS_WEB_IDENTITY_TOKEN_FILE=$(pwd)/web-identity-token
             - echo $BITBUCKET_STEP_OIDC_TOKEN > $(pwd)/web-identity-token
-            # Verify AWS credentials and get temporary credentials
-            - export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
-              $(aws sts assume-role-with-web-identity \
-              --role-arn $AWS_ROLE_ARN \
-              --role-session-name "BitbucketPipelineSession" \
-              --web-identity-token file://$AWS_WEB_IDENTITY_TOKEN_FILE \
-              --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
-              --output text))
-            # Verify credentials again after assume-role
+            # Get temporary credentials in one line
+            - export $(aws sts assume-role-with-web-identity --role-arn $AWS_ROLE_ARN --role-session-name "BitbucketPipelineSession" --web-identity-token file://$AWS_WEB_IDENTITY_TOKEN_FILE --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text | awk '{print "AWS_ACCESS_KEY_ID="$1" AWS_SECRET_ACCESS_KEY="$2" AWS_SESSION_TOKEN="$3}')
+            # Verify credentials
             - aws sts get-caller-identity
             # Install dependencies and deploy
+            - npm ci
+            - npm run build
             - npm run cdk deploy "hvt-dev-cicd-stack" -- --require-approval never 
