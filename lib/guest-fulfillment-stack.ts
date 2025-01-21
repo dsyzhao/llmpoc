@@ -93,6 +93,8 @@ export class GuestFulfillmentStack extends cdk.Stack {
       functionName: `${props.applicationName}-${props.environment}-stk-lambda-proxy-api-handler`,
       runtime: lambda.Runtime.PYTHON_3_9,
       handler: 'lambda-proxy-api-handler.handler',
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
       environment: {
         BOT_ID: bot.attrId,
         BOT_ALIAS_ID: botAlias.attrBotAliasId,
@@ -113,7 +115,12 @@ export class GuestFulfillmentStack extends cdk.Stack {
     proxyFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['lex:RecognizeText'],
-        resources: [`arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.attrId}/${botAlias.attrBotAliasId}`]
+        resources: [
+          // Original bot permission
+          `arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.attrId}/${botAlias.attrBotAliasId}`,
+          // Additional bot permission
+          `arn:aws:lex:${this.region}:${this.account}:bot-alias/CLKLPPZYND/PTTNQEDRVR`
+        ]
       })
     );
 
