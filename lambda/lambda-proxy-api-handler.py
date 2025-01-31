@@ -80,7 +80,7 @@ def handler(event, context):
         try:
             response = lex_client.recognize_text(
                 botId="CLKLPPZYND",#bot_id,
-                botAliasId="PTTNQEDRVR",#bot_alias_id,
+                botAliasId="PYRKBGNF98",#bot_alias_id,
                 localeId=locale_id,
                 sessionId=session_id,
                 text=text_input,

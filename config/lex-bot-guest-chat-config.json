@@ -1,31 +1,117 @@
 {
-  "locale": {
-    "id": "en_US",
-    "nluConfidenceThreshold": 0.40,
-    "voice": {
-      "id": "Salli"
-    }
+  "name": "English (US)",
+  "identifier": "en_US",
+  "version": null,
+  "description": null,
+  "voiceSettings": {
+    "engine": "neural",
+    "voiceId": "Danielle"
+  },
+  "nluConfidenceThreshold": 0.4,
+  "generativeAISettings": {
+    "buildtimeSettings": {
+      "descriptiveBotBuilderSpecification": {
+        "enabled": true,
+        "bedrockModelSpecification": {
+          "modelArn": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-v2",
+          "customPrompt": null,
+          "bedrockGuardrailConfiguration": null,
+          "bedrockTraceStatus": null
+        }
+      },
+      "sampleUtteranceGenerationSpecification": null
+    },
+    "runtimeSettings": null
   },
   "intents": [
     {
-      "name": "GetTime",
-      "description": "Intent to get current time",
+      "name": "Greetings",
+      "description": "This intent is to greet a customer, e.g. \"hello\", \"hi\".",
       "sampleUtterances": [
-        { "utterance": "What time is it" },
-        { "utterance": "Tell me the time" },
-        { "utterance": "Current time please" },
-        { "utterance": "What's the time now" }
+        { "utterance": "Hi" },
+        { "utterance": "Hello" }
       ],
-      "fulfillmentCodeHook": {
-        "enabled": true
+      "initialResponseSetting": {
+        "codeHook": {
+          "isActive": true,
+          "enableCodeHookInvocation": true,
+          "postCodeHookSpecification": {
+            "failureNextStep": {
+              "dialogAction": {
+                "type": "EndConversation"
+              }
+            },
+            "successNextStep": {
+              "dialogAction": {
+                "type": "EndConversation"
+              }
+            },
+            "timeoutNextStep": {
+              "dialogAction": {
+                "type": "EndConversation"
+              }
+            }
+          },
+          "nextStep": {
+            "dialogAction": {
+              "type": "InvokeDialogCodeHook"
+            }
+          }
+        }
       }
     },
     {
       "name": "FallbackIntent",
-      "description": "Default fallback intent",
+      "description": "Default fallback intent for Bedrock integration",
       "parentIntentSignature": "AMAZON.FallbackIntent",
+      "initialResponseSetting": {
+        "codeHook": {
+          "isActive": true,
+          "enableCodeHookInvocation": true,
+          "postCodeHookSpecification": {
+            "failureNextStep": {
+              "dialogAction": {
+                "type": "EndConversation"
+              }
+            },
+            "successNextStep": {
+              "dialogAction": {
+                "type": "FulfillIntent"
+              }
+            },
+            "timeoutNextStep": {
+              "dialogAction": {
+                "type": "EndConversation"
+              }
+            }
+          },
+          "nextStep": {
+            "dialogAction": {
+              "type": "InvokeDialogCodeHook"
+            }
+          }
+        }
+      },
       "fulfillmentCodeHook": {
-        "enabled": true
+        "enabled": true,
+        "isActive": true,
+        "postFulfillmentStatusSpecification": {
+          "failureNextStep": {
+            "dialogAction": {
+              "type": "EndConversation"
+            }
+          },
+          "successNextStep": {
+            "dialogAction": {
+              "type": "EndConversation"
+            }
+          },
+          "timeoutNextStep": {
+            "dialogAction": {
+              "type": "EndConversation"
+            }
+          }
+        }
       }
     }
   ]
