@@ -55,7 +55,7 @@ export class GuestFulfillmentStack extends cdk.Stack {
 
     // 3. Create bot version with proper reference
     const botVersion = new lexv2.CfnBotVersion(this, 'LexBotVersion', {
-      botId: bot.attrId,  // Use attrId for the physical ID
+      botId: bot.attrId,
       botVersionLocaleSpecification: [{
         localeId: lexConfig.identifier,
         botVersionLocaleDetails: {
@@ -67,9 +67,9 @@ export class GuestFulfillmentStack extends cdk.Stack {
 
     // 4. Create alias with proper references
     const botAlias = new lexv2.CfnBotAlias(this, 'LexBotAlias', {
-      botAliasName: `guest-chat-alias-${Date.now()}`,
-      botId: bot.attrId,  // Use attrId for the physical ID
-      botVersion: 'DRAFT',  // Start with DRAFT version
+      botAliasName: `guest-chat-alias-${props.environment}`,
+      botId: bot.attrId,
+      botVersion: '1',
       botAliasLocaleSettings: [{
         botAliasLocaleSetting: {
           enabled: true,
@@ -83,7 +83,7 @@ export class GuestFulfillmentStack extends cdk.Stack {
         localeId: lexConfig.identifier
       }]
     });
-    botAlias.addDependency(bot);
+    botAlias.addDependency(botVersion);
 
     // Create Proxy Lambda for API Gateway
     const proxyFunction = new lambda.Function(this, 'ProxyApiHandler', {
@@ -148,6 +148,9 @@ export class GuestFulfillmentStack extends cdk.Stack {
       deployOptions: {
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: true
+      },
+      defaultMethodOptions: {
+        authorizationType: apigateway.AuthorizationType.IAM
       }
     });
 
@@ -180,43 +183,5 @@ export class GuestFulfillmentStack extends cdk.Stack {
       description: 'Lex Bot ID'
     });
 
-    // Add the test Lambda function
-    const testFunction = new lambda.Function(this, 'TestFulfillmentHandler', {
-      functionName: `${props.applicationName}-${props.environment}-stk-lambda-test-fulfillment`,
-      runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'lambda-test-2025-01-27.lambda_handler',
-      timeout: cdk.Duration.seconds(60),
-      memorySize: 512,
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
-        exclude: ['*', '!lambda-test-2025-01-27.py']
-      }),
-      layers: [
-        new lambda.LayerVersion(this, 'LangchainLayer', {
-          layerVersionName: `${props.applicationName}-${props.environment}-stk-lambda-layer-langchain`,
-          description: 'Layer containing langchain and related dependencies',
-          code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda/layers/langchain')),
-          compatibleRuntimes: [lambda.Runtime.PYTHON_3_12]
-        })
-      ]
-    });
-
-    // Add admin managed policy
-    testFunction.role?.addManagedPolicy(
-      iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess')
-    );
-
-    // Add specific Lambda permission for Lex to invoke this function
-    testFunction.addPermission('LexInvocation', {
-      principal: new iam.ServicePrincipal('lexv2.amazonaws.com'),
-      action: 'lambda:InvokeFunction',
-      sourceArn: `arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.ref}/*`
-    });
-
-    // Add Lex role permissions
-    lexRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['lambda:InvokeFunction'],
-      resources: [testFunction.functionArn]
-    }));
   }
 } 
