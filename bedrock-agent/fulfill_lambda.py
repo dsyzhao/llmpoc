@@ -1,0 +1,302 @@
+import logging
+import boto3
+import uuid
+import pprint
+import json
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+logging.basicConfig(format='[%(asctime)s] p%(process)s {%(filename)s:%(lineno)d} %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+session = boto3.Session(region_name='us-east-1')
+bedrock_agent_client = session.client('bedrock-agent')
+bedrock_agent_runtime_client = session.client('bedrock-agent-runtime')
+
+def invoke_agent_helper(query, session_id, agent_id, alias_id, enable_trace=False, memory_id=None, session_state=None, end_session=False):
+    if not session_state:
+        session_state = {}
+
+    agent_response = bedrock_agent_runtime_client.invoke_agent(
+        inputText=query,
+        agentId=agent_id,
+        agentAliasId=alias_id,
+        sessionId=session_id,
+        enableTrace=enable_trace,
+        endSession=end_session,
+        memoryId=memory_id,
+        sessionState=session_state
+    )
+
+    if enable_trace:
+        logger.info(pprint.pprint(agent_response))
+    print(f"{agent_response = }")
+    event_stream = agent_response['completion']
+    try:
+        for event in event_stream:
+            print(event)
+            if 'chunk' in event:
+                data = event['chunk']['bytes']
+                if enable_trace:
+                    logger.info(f"Final answer ->\n{data.decode('utf8')}")
+                agent_answer = data.decode('utf8')
+                return agent_answer
+                # End event indicates that the request finished successfully
+            elif 'trace' in event:
+                if enable_trace:
+                    logger.info(json.dumps(event['trace'], indent=2))
+            elif 'returnControl' in event:
+                response_with_roc_allowed = bedrock_agent_runtime_client.invoke_agent(
+                    agentId=agent_id,
+                    agentAliasId=alias_id, 
+                    sessionId=session_id,
+                    enableTrace=enable_trace, 
+                    endSession=end_session,
+                    memoryId=memory_id,
+                    sessionState={
+                        'invocationId': event["returnControl"]["invocationId"],
+                        'returnControlInvocationResults': [{
+                                'functionResult': {
+                                    'actionGroup': event["returnControl"]["invocationInputs"][0]["functionInvocationInput"]["actionGroup"],
+                                    'function': event["returnControl"]["invocationInputs"][0]["functionInvocationInput"]["function"],
+                                    #'confirmationState': 'CONFIRM',
+                                    'responseBody': {
+                                        "TEXT": {
+                                            'body': ''
+                                        }
+                                    }
+                                }
+                        }]}
+                )
+                event_stream = response_with_roc_allowed['completion']
+                for response_event in event_stream:
+                    if 'chunk' in response_event:
+                        data = response_event['chunk']['bytes']
+                        if enable_trace:
+                            logger.info(f"Final answer ->\n{data.decode('utf8')}")
+                        agent_answer = data.decode('utf8')
+                        return agent_answer
+                    elif 'trace' in response_event:
+                        if enable_trace:
+                            logger.info(json.dumps(response_event['trace'], indent=2))
+                    else:
+                        raise Exception("unexpected event.", response_event)
+            else:
+                raise Exception("unexpected event.", event)
+    except Exception as e:
+        raise Exception("unexpected event.", e)
+
+def invoke_agent_helper1(query, session_id, agent_id, alias_id, enable_trace=False, memory_id=None, session_state=None, end_session=False):
+    if not session_state:
+        session_state = {}
+
+    agent_response = bedrock_agent_runtime_client.invoke_agent(
+        inputText=query,
+        agentId=agent_id,
+        agentAliasId=alias_id,
+        sessionId=session_id,
+        enableTrace=enable_trace,
+        endSession=end_session,
+        memoryId=memory_id,
+        sessionState=session_state
+    )
+
+    if enable_trace:
+        logger.info(pprint.pprint(agent_response))
+    print(f"{agent_response = }")
+    event_stream = agent_response['completion']
+    try:
+        for event in event_stream:
+            if 'chunk' in event:
+                data = event['chunk']['bytes']
+                if enable_trace:
+                    logger.info(f"Final answer ->\n{data.decode('utf8')}")
+                agent_answer = data.decode('utf8')
+                return agent_answer
+                # End event indicates that the request finished successfully
+            elif 'trace' in event:
+                if enable_trace:
+                    logger.info(json.dumps(event['trace'], indent=2))
+            else:
+                raise Exception("unexpected event.", event)
+    except Exception as e:
+        raise Exception("unexpected event.", e)
+
+def items_availability(hotel_number: str):
+    s3_client = boto3.client('s3')
+    bucket_name = 'botconfig205154476688v2'
+    file_path = f'{hotel_number}serviceInfo.json'
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
+        data = response['Body'].read().decode('utf-8')
+    except Exception as e:
+        logger.error(f"Error occurred while retrieving {file_path}: {e}")
+        data = "{}"
+
+    data = json.loads(data)
+    unavailable_items = [k for k, v in data.items() if v['Avaliable'] == 'No']
+    available_items = [k for k, v in data.items() if v['Avaliable'] == 'Yes']
+
+    logger.info(f"{unavailable_items = }")
+    logger.info(f"{available_items = }")
+
+
+    dept_items = {} # {'Engineering': ['Ipod Docking Station', 'Laptop Charger', 'USB Charger Hub', 'USB Plug', ...
+    for item, details in data.items():
+        department = details.get('Department')
+        if details['Avaliable'] == 'Yes':
+            if department not in dept_items:
+                dept_items[department] = []
+            dept_items[department].append(item)
+    dept_items = {k:', '.join(v) for k,v in dept_items.items()}
+    logger.info(f"{dept_items = }")
+
+    return unavailable_items, available_items, dept_items
+
+def response_to_empty_transcription(event):
+    return {
+        "sessionState": {
+            "dialogAction": {
+                "type": "Close"
+            },
+            "intent": {
+                "name": event["sessionState"]["intent"]["name"],
+                "state": "Fulfilled"
+            }
+        },
+        "messages": [{
+            "contentType": "PlainText",
+            "content": "Would you repeat what you just said?"
+        }]
+    }
+
+def get_current_timestamp(timezone):
+    utc_now = datetime.now(ZoneInfo("UTC"))
+    try:
+        local_time = utc_now.astimezone(ZoneInfo(timezone))
+    except Exception as e:
+        # local_time = utc_now.astimezone(ZoneInfo("America/New_York"))
+        local_time = utc_now
+        logger.error(f"Wrong timezone {e = }")
+    formatted_time = local_time.strftime("%Y_%m_%d_%H_%M_%S")
+    return formatted_time
+
+
+def lambda_handler(event, context):
+    print("LEX EVENT: -----", event)
+    query = event['transcriptions'][0].get('transcription', None)
+
+    # Guardrail clauses for empty transcription
+    if not query:
+        return response_to_empty_transcription(event)
+    elif len(query.strip()) == 0:
+        return response_to_empty_transcription(event)
+
+    agent_id = 'QPUIAGLFMO' # single-agent
+    agent_alias_id = "TSTALIASID" # 
+
+    #session_attributes = event["sessionState"]["sessionAttributes"]
+    #{'hotel_city': 'Grapevine', 'eng_hours': '08:00 AM - 04:00 PM', 'hotel_timezone': 'America/New_York', 'room_number': '301', 'transfer_fo': '+16784336186', 'phone_number': '+16782030501', 'hotel_address': '2401 Bass Pro Drive', 'hotel_info': '', 'fd_hours': '07:00 AM - 07:00 PM', 'hotel_name': 'Embassy Suites by Hilton - DFW Airport North'}
+
+    # try:
+
+
+        # hotel_info = event["sessionState"]["sessionAttributes"]
+        # hotel_number = hotel_info["phone_number"]
+        # room_number = hotel_info["room_number"]
+
+        # # TODO : Remove once fixed
+        # if 'class' not in hotel_info:
+        #     hotel_info['class'] = 0
+        # if 'hotel_timezone' in hotel_info:
+        #     hotel_info['timezone'] = hotel_info['hotel_timezone']
+
+        # sessionAttributes = event["sessionState"]["sessionAttributes"]
+        # hotel_number = sessionAttributes["phone_number"]
+        # room_number = sessionAttributes["room_number"]
+        # hotel_info = sessionAttributes["hotel_info_map"][hotel_number] # api Lambda break hotel_info_map into sessionAttributes
+        # unavailable_items = hotel_info['unavailable_items']
+        # logger.info(f"Extracted hotel info from event.sessionState.sessionAttributes: {hotel_number = }  {room_number = }")
+    # except:
+    hotel_number = '+16782030501'
+    room_number = '123'
+    logger.info(f"Default {hotel_number = }  {room_number = }")
+    hotel_info = {
+            "timezone": "America/New_York",
+            "fd_hour": "Cycle",
+            "fd_start_time": "07:00 AM",
+            "fd_end_time": "07:00 PM",
+            "eng_hour": "Cycle",
+            "eng_request_time": "tomorrow_08:00 AM",
+            "eng_start_time": "08:00 AM",
+            "eng_end_time": "04:00 PM",
+            "transfer_fo": "+16784336186",
+            "address": "2401 Bass Pro Drive",
+            "name": "Embassy Suites by Hilton - DFW Airport North",
+            "city": "Grapevine",
+            "class": "0"}
+
+    hotel_class = hotel_info["class"]
+    time_zone = hotel_info["timezone"]
+    fd_start_time = hotel_info["fd_start_time"]
+    fd_end_time = hotel_info["fd_end_time"]
+    eng_start_time = hotel_info["eng_start_time"]
+    eng_end_time = hotel_info["eng_end_time"]
+
+    if hotel_class == '0':
+        hotel_tone = "Luxury & Upper Upscale" 
+    elif hotel_class == '1':
+        hotel_tone = "Upscale & Upper Midscale"
+    else:
+        hotel_tone = "Midscale & Economy"
+    
+    unavailable_items, available_items, dept_items = items_availability(hotel_number)
+    current_datetime = get_current_timestamp(hotel_info['timezone'])
+
+    ## create a random id for session initiator id
+    session_id:str = event['sessionId']
+    memory_id:str = room_number # 'room123'
+    enable_trace:bool = False
+    end_session:bool = False
+    session_state = {
+         'sessionAttributes': {
+            'hotel_phone_number': hotel_number,
+            'room_number': room_number,
+            'hotel_info' : json.dumps(hotel_info)
+        },
+        'promptSessionAttributes': {
+            'hotel_tone' : hotel_tone,
+            'current_datetime': current_datetime,
+            'fd_start_time' : fd_start_time,
+            'fd_end_time' : fd_end_time,
+            'eng_start_time' : eng_start_time,
+            'eng_end_time': eng_end_time,
+            'unavailable_items': ', '.join(unavailable_items),
+            'available_items' : ', '.join(available_items),
+            'dept_items' : json.dumps(dept_items)
+        }
+    }
+    logger.info(f"{session_state = }")
+    
+    start_time = time.time()
+    contents = invoke_agent_helper(query, session_id, agent_id, agent_alias_id, enable_trace=enable_trace, memory_id=memory_id, session_state=session_state)
+    print (f"{contents = }")
+    print("--- %s seconds for agent to finish creating response ---" % (time.time() - start_time))
+    
+    return {
+        "sessionState": {
+            "dialogAction": {
+                "type": "Close"
+            },
+            "intent": {
+                "name": event["sessionState"]["intent"]["name"],
+                "state": "Fulfilled"
+            }
+        },
+        "messages": [{
+            "contentType": "PlainText",
+            "content": contents
+        }]
+    }
