@@ -16,7 +16,7 @@ export class CICDStack extends cdk.Stack {
 
     // Create OIDC Provider for Bitbucket
     const provider = new iam.OpenIdConnectProvider(this, 'BitbucketOIDCProvider', {
-      url: 'https://api.bitbucket.org/2.0/openid-connect',
+      url: 'https://api.bitbucket.org/2.0/workspaces/na-dna/pipelines-config/identity/oidc',
       clientIds: ['ari:cloud:bitbucket::workspace/9be73cb9-4aa8-4d81-a92f-e9aa2b628207'],
       thumbprints: ['a031c46782e6e6c662c2c87c76da9aa62ccabd8e']
     });
@@ -26,11 +26,10 @@ export class CICDStack extends cdk.Stack {
       roleName: `${props.applicationName}-${props.environment}-stk-iam-role-bitbucket-deployment`,
       assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
         StringEquals: {
-          'api.bitbucket.org/2.0/openid-connect:aud': 'ari:cloud:bitbucket::workspace/9be73cb9-4aa8-4d81-a92f-e9aa2b628207'
+          [`api.bitbucket.org/2.0/workspaces/na-dna/pipelines-config/identity/oidc:aud`]: 'ari:cloud:bitbucket::workspace/9be73cb9-4aa8-4d81-a92f-e9aa2b628207'
         },
         StringLike: {
-          // Match the repository UUID from environment variables
-          'api.bitbucket.org/2.0/openid-connect:sub': 'repository:na-dna/hospitality-voice-tech:*'
+          [`api.bitbucket.org/2.0/workspaces/na-dna/pipelines-config/identity/oidc:sub`]: '{4f33f54c-920b-4a8c-8cb8-04f0dad906e1}:*'
         }
       })
     });
