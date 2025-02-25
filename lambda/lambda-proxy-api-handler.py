@@ -56,22 +56,8 @@ def handler(event, context):
         # Create OrderedDict with desired attribute order
         session_attributes = OrderedDict([
             ("phone_number", phone_number),
-            ("room_number", room_number),
-            ("hotel_info", hotel_info)
+            ("room_number", room_number)
         ])
-        
-        # Add hotel-specific details if available, maintaining order
-        if hotel_details:
-            hotel_specific_attrs = OrderedDict([
-                ("hotel_name", hotel_details.get("name", "")),
-                ("hotel_city", hotel_details.get("city", "")),
-                ("hotel_timezone", hotel_details.get("timezone", "")),
-                ("hotel_address", hotel_details.get("address", "")),
-                ("transfer_fo", hotel_details.get("transfer_fo", "")),
-                ("fd_hours", f"{hotel_details.get('fd_start_time', '')} - {hotel_details.get('fd_end_time', '')}"),
-                ("eng_hours", f"{hotel_details.get('eng_start_time', '')} - {hotel_details.get('eng_end_time', '')}")
-            ])
-            session_attributes.update(hotel_specific_attrs)
 
         logger.info(f"Calling Lex: botId={bot_id}, botAliasId={bot_alias_id}, localeId={locale_id}, "
                     f"sessionId={session_id}, text={text_input}")
@@ -79,8 +65,8 @@ def handler(event, context):
 
         try:
             response = lex_client.recognize_text(
-                botId="CLKLPPZYND",#bot_id,
-                botAliasId="PYRKBGNF98",#bot_alias_id,
+                botId="RMDVGYE12J",#bot_id,
+                botAliasId="9SHPGBBFW1",#bot_alias_id,
                 localeId=locale_id,
                 sessionId=session_id,
                 text=text_input,
