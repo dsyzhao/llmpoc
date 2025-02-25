@@ -5,6 +5,7 @@ import { GuestFulfillmentStack } from '../lib/guest-fulfillment-stack';
 import * as config from '../config/env-config.json';
 import { Config } from '../types/config';
 import { CICDStack } from '../lib/ci-cd-stack';
+import { BedrockAgentStack } from '../lib/bedrock-agent-stack';
 
 const app = new cdk.App();
 
@@ -38,4 +39,14 @@ new CICDStack(app, `${typedConfig.application}-${envName}-cicd-stack`, {
   workspaceId: '9be73cb9-4aa8-4d81-a92f-e9aa2b628207',
   workspaceName: 'na-dna',
   repositoryName: 'hospitality-voice-tech'
+});
+
+// Add Bedrock Agent stack
+new BedrockAgentStack(app, `${typedConfig.application}-${envName}-bedrock-agent-stack`, {
+  env: {
+    account: envConfig.account,
+    region: envConfig.region
+  },
+  environment: envConfig.environment,
+  applicationName: typedConfig.application
 }); 
