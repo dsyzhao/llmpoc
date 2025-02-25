@@ -1,353 +1,280 @@
-import boto3
-import asyncio, uuid
 import logging
+import boto3
+import uuid
+import pprint
 import json
-import sys
-from multi_agent_orchestrator.storage import DynamoDbChatStorage
-from multi_agent_orchestrator.orchestrator import MultiAgentOrchestrator, OrchestratorConfig
-from multi_agent_orchestrator.types import ConversationMessage
-from multi_agent_orchestrator.utils import AgentTools, AgentTool
-from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions, AgentResponse, SupervisorAgent, SupervisorAgentOptions
-from multi_agent_orchestrator.classifiers import ClassifierResult, BedrockClassifier, BedrockClassifierOptions
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+
+logging.basicConfig(format='[%(asctime)s] p%(process)s {%(filename)s:%(lineno)d} %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
-model_id_supervisor = ["amazon.nova-pro-v1:0"]
+session = boto3.Session(region_name='us-east-1')
+bedrock_agent_client = session.client('bedrock-agent')
+bedrock_agent_runtime_client = session.client('bedrock-agent-runtime')
 
-model_id_workers = ["anthropic.claude-3-haiku-20240307-v1:0"]
 
-region_name='us-east-1'
-table_name = 'agent_history'
+def invoke_agent_helper(query, session_id, agent_id, alias_id, enable_trace=False, memory_id=None, session_state=None, end_session=False):
+    if not session_state:
+        session_state = {}
 
-inference_config={
-        'maxTokens': 100,
-        'temperature': 0,
-        'topP': 0.9
-    }
-
-session = boto3.Session(region_name=region_name)
-bedrock_client = session.client('bedrock-runtime')
-lambda_client = session.client('lambda')
-
-memory_storage = DynamoDbChatStorage(
-            table_name=table_name,
-            region=region_name
-        )
-
-def get_request_ticket_api(userInput: str) -> str:
-    """receive userinput and create request ticket by invoking lambda funciton
-
-    :param userInput: transcription
-    :param serviceProfile: list of items and services in a hotel
-    """
-
-    payload = json.dumps({"userInput": userInput})
-
-    response = lambda_client.invoke(
-        FunctionName="create_ticket",
-        InvocationType='Event',
-        LogType='None',
-        Payload=payload)
-
-    logger.info(response)
-    
-    logger.info(payload)
-    return "ticket is created successfully"
-
-api_tool = AgentTool(
-    name="request_ticket_api_tool",
-    description="receive userinput and invoke lambda function to create request ticket",
-    properties = {
-        "userInput": {
-            "type": "string",
-            "description": "The user request (transcription)"
-        }
-    },
-    required=["userInput"],
-    func=get_request_ticket_api
-    
-)
-
-tools = AgentTools([api_tool])
-
-service_request_ticket_agent = BedrockLLMAgent(BedrockLLMAgentOptions(
-    name='Hotel Service Request Ticket Assistant',
-    description="""You are an AI assistant specialized in creating service request tickets for hotel guests.""",
-    client=bedrock_client,
-    tool_config={
-        'tool': tools,
-        'toolMaxRecursions': 5,  
-    },
-    model_id=model_id_workers[0],
-    save_chat= True
-    ))
-
-get_info_agent = BedrockLLMAgent(BedrockLLMAgentOptions(
-    name='Hotel Local Advisor',
-    description='An AI assistant that helps hotel guests with their question about hotel surrounding such as nearby restaurant or tourist attractions and etc.',
-    client=bedrock_client,
-    model_id=model_id_workers[0],
-    save_chat= True
-    ))
-
-"""You are an AI assistant that leads coordination of support inquirie from a hotel guest. 
-            You should always maintain a professional tone in your interactions with the user throughtout the conversation.
-            your final respinse to the user should always be similar to this:
-            - Your request for the item is successfully placed. Is there any thing else I can help you with please?
-            """
-
-supervisor = SupervisorAgent(SupervisorAgentOptions(
-    lead_agent=BedrockLLMAgent(BedrockLLMAgentOptions(
-        name="Support Team Lead",
-        model_id=model_id_supervisor[0],
-        inference_config = inference_config,
-        description=f"""You are an AI assistant that coordinates hotel guest support inquiries by delegating tasks to specialized agents. 
-                    - You must not assume or use any of your knowledge and always use the provided information
-                    - Service/item requests are already fulfilled ifpart of the request, you should only handle non-service requests and information queries
-                    - You should delegate information requests to the 'Hotel Local Advisor'
-                    You should always maintain a professional tone in your interactions with the user throughout the conversation.""",
-        client=bedrock_client
-    )),
-    team=[
-        get_info_agent
-    ],
-    storage=DynamoDbChatStorage(
-        table_name=table_name,
-        region=region_name
+    agent_response = bedrock_agent_runtime_client.invoke_agent(
+        inputText=query,
+        agentId=agent_id,
+        agentAliasId=alias_id,
+        sessionId=session_id,
+        enableTrace=enable_trace,
+        endSession=end_session,
+        memoryId=memory_id,
+        sessionState=session_state
     )
-))
 
-custom_bedrock_classifier = BedrockClassifier(BedrockClassifierOptions(
-    model_id=model_id_workers[0],
-    region=region_name
-))
+    if enable_trace:
+        logger.info(pprint.pprint(agent_response))
+    print(f"{agent_response = }")
+    event_stream = agent_response['completion']
+    try:
+        for event in event_stream:
+            print(event)
+            if 'chunk' in event:
+                data = event['chunk']['bytes']
+                if enable_trace:
+                    logger.info(f"Final answer ->\n{data.decode('utf8')}")
+                agent_answer = data.decode('utf8')
+                return agent_answer, ''
+                # End event indicates that the request finished successfully
+            elif 'trace' in event:
+                if enable_trace:
+                    logger.info(json.dumps(event['trace'], indent=2))
+            elif 'returnControl' in event:
+                response_with_roc_allowed = bedrock_agent_runtime_client.invoke_agent(
+                    agentId=agent_id,
+                    agentAliasId=alias_id, 
+                    sessionId=session_id,
+                    enableTrace=enable_trace, 
+                    endSession=end_session,
+                    memoryId=memory_id,
+                    sessionState={
+                        'invocationId': event["returnControl"]["invocationId"],
+                        'returnControlInvocationResults': [{
+                                'functionResult': {
+                                    'actionGroup': event["returnControl"]["invocationInputs"][0]["functionInvocationInput"]["actionGroup"],
+                                    'function': event["returnControl"]["invocationInputs"][0]["functionInvocationInput"]["function"],
+                                    #'confirmationState': 'CONFIRM',
+                                    'responseBody': {
+                                        "TEXT": {
+                                            'body': ''
+                                        }
+                                    }
+                                }
+                        }]}
+                )
+                event_stream = response_with_roc_allowed['completion']
+                for response_event in event_stream:
+                    if 'chunk' in response_event:
+                        data = response_event['chunk']['bytes']
+                        if enable_trace:
+                            logger.info(f"Final answer ->\n{data.decode('utf8')}")
+                        agent_answer = data.decode('utf8')
+                        return agent_answer, 'transferFD'
+                    elif 'trace' in response_event:
+                        if enable_trace:
+                            logger.info(json.dumps(response_event['trace'], indent=2))
+                    else:
+                        raise Exception("unexpected event.", response_event)
+            else:
+                raise Exception("unexpected event.", event)
+    except Exception as e:
+        raise Exception("unexpected event.", e)
 
-def s3_retrieve(hotel_number, bucket_name = 'botconfig205154476688v2'):
+
+def items_availability(hotel_number: str):
     s3_client = boto3.client('s3')
-    
-    hotel_hours_path = 'hotel_number.json'
+    bucket_name = 'botconfig205154476688v2'
+    file_path = f'{hotel_number}serviceInfo.json'
     try:
-        response = s3_client.get_object(Bucket=bucket_name, Key=hotel_hours_path)
-        file_content = response['Body'].read().decode('utf-8')
-        hotel_info = json.loads(file_content)[hotel_number]
-        #logger.info(f"{hotel_info = }")
+        response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
+        data = response['Body'].read().decode('utf-8')
     except Exception as e:
-        logger.error(f"Error occurred while retrieving {hotel_hours_path}: {e}")
-        hotel_info = {}
+        logger.error(f"Error occurred while retrieving {file_path}: {e}")
+        data = "{}"
 
-    return hotel_info
+    data = json.loads(data)
+    unavailable_items = [k for k, v in data.items() if v['Avaliable'] == 'No']
+    available_items = [k for k, v in data.items() if v['Avaliable'] == 'Yes']
 
-def update_prompts(hotel_info):
-    ORDER_ITEM_SERVICE_AGENT_PROMPT = f"""
-    You are an AI assisstant that its primary role is to invoke a lambda function to create a ticket for the user requested item.
-    Your only response is "Success, ServiceRequestOnly" or "Success, IncludesServiceRequest" or "NoServiceRequest" or "Failure"
+    logger.info(f"{unavailable_items = }")
+    logger.info(f"{available_items = }")
 
-    - Use the `request_ticket_api_tool` to create a service request ticket whenever a user requests items or services.
-    - Your primary role is to **invoke the ticket API tool** and return a response indicating success or failure.
-    - Do not directly handle the request outside the tool. Always use the tool.
-    
-    Here are the tools you can use:
-    <tools>
-    request_ticket_api_tool:create a ticket for each guest request.
-    </tools>
-    """
-    service_request_ticket_agent.set_system_prompt(ORDER_ITEM_SERVICE_AGENT_PROMPT)
 
-    GET_INFO_AGENT_PROMPT = f"""
-    You are a helpful AI assistant that help hotel guests with their question about hotel surrounding such as nearby restaurant or tourist attractions and etc.
-    Your primary role is to answer user question. Provide information in the vicinity of the hotel address located at: {hotel_info['address']}.
-    """
-    get_info_agent.set_system_prompt(GET_INFO_AGENT_PROMPT)
+    dept_items = {} # {'Engineering': ['Ipod Docking Station', 'Laptop Charger', 'USB Charger Hub', 'USB Plug', ...
+    for item, details in data.items():
+        department = details.get('Department')
+        if details['Avaliable'] == 'Yes':
+            if department not in dept_items:
+                dept_items[department] = []
+            dept_items[department].append(item)
+    dept_items = {k:', '.join(v) for k,v in dept_items.items()}
+    logger.info(f"{dept_items = }")
 
-async def direct_agent_request(agent, user_input: str, user_id: str, session_id: str) -> AgentResponse:
-    """
-    Direct routing to agent bypassing supervisor for simple requests
-    Maintains conversation history in DynamoDB but skips supervisor orchestration
-    """
-    try:
-        # Get existing chat history
-        chat_history = await memory_storage.get_chat_history(user_id, session_id)
-        
-        # Direct call to agent
-        start_time = time.time()
-        response = await agent.process_request(
-            user_input,
-            user_id,
-            session_id,
-            chat_history or []
-        )
-        print(f"--- Direct agent processing time: {time.time() - start_time} seconds ---")
-        
-        return response
-    except Exception as e:
-        logger.error(f"Direct routing failed: {e}")
-        # Fallback to supervisor if direct routing fails
-        return None
+    return unavailable_items, available_items, dept_items
 
-async def get_routing_decision(user_input: str) -> tuple[ClassifierResult, bool]:
-    """
-    Uses service request agent to classify if request is purely for service.
-    Returns tuple of (ClassifierResult, can_bypass_supervisor)
-    """
-    try:
-        # Get classification from service agent
-        response = await service_request_ticket_agent.process_request(
-            user_input,
-            "classifier",  # special user_id for classification
-            "classifier",  # special session_id for classification
-            []  # empty chat history for clean classification
-        )
-        
-        # Check response
-        if response.output.content[0].get('text') == "Success, ServiceRequestOnly":
-            return ClassifierResult(
-                selected_agent=service_request_ticket_agent,
-                confidence=0.95
-            ), True
-            
-        # All other responses go through supervisor
-        return ClassifierResult(selected_agent=supervisor, confidence=1.0), False
-        
-    except Exception as e:
-        logger.error(f"Classification error: {e}")
-        # On any error, default to supervisor
-        return ClassifierResult(selected_agent=supervisor, confidence=1.0), False
-
-async def async_handler(_intent_name, _user_input, _orchestrator, _user_id, _session_id):
-    start_time = time.time()
-    
-    try:
-        # First call to service agent for classification and potential ticket creation
-        initial_response = await service_request_ticket_agent.process_request(
-            _user_input,
-            _user_id,
-            _session_id,
-            []  # Start fresh for this request
-        )
-        
-        response_text = initial_response.output.content[0].get('text')
-        print(f"Initial agent response: {response_text}")
-        
-        # Handle each response type specifically
-        if response_text == "Success, ServiceRequestOnly":
-            # Pure service request - use the response we already have
-            print(f"--- Direct service request time: {time.time() - start_time} seconds ---")
-            response = initial_response
-            
-        elif response_text == "Success, IncludesServiceRequest":
-            # Mixed request - service part handled, pass context to supervisor
-            print("Mixed request - service portion handled, routing to supervisor")
-            context_message = (
-                "Note: The service/item portion of this request has been successfully "
-                "processed and a ticket has been created. Please handle the remaining "
-                "information or other requests only."
-            )
-            enhanced_input = f"{context_message}\nUser request: {_user_input}"
-            
-            response = await _orchestrator.agent_process_request(
-                enhanced_input,
-                _user_id,
-                _session_id,
-                ClassifierResult(selected_agent=supervisor, confidence=1.0)
-            )
-            
-        elif response_text == "NoServiceRequest":
-            # Pure information request - route directly to supervisor
-            print("Information request - routing to supervisor")
-            context_message = (
-                "Note: This request has been verified to contain no service/item requests. "
-                "Please proceed with handling the information request."
-            )
-            enhanced_input = f"{context_message}\nUser request: {_user_input}"
-            
-            response = await _orchestrator.agent_process_request(
-                enhanced_input,
-                _user_id,
-                _session_id,
-                ClassifierResult(selected_agent=supervisor, confidence=1.0)
-            )
-            
-        else:  # "Failure" or unexpected response
-            # Classification failed - let supervisor handle everything
-            print("Classification unclear - routing to supervisor for full processing")
-            context_message = (
-                "Note: Request classification was unclear. Please analyze the full request "
-                "and handle any information queries. If you detect any service/item requests, "
-                "note in your response that those should be made as separate requests."
-            )
-            enhanced_input = f"{context_message}\nUser request: {_user_input}"
-            
-            response = await _orchestrator.agent_process_request(
-                enhanced_input,
-                _user_id,
-                _session_id,
-                ClassifierResult(selected_agent=supervisor, confidence=1.0)
-            )
-    
-    except Exception as e:
-        logger.error(f"Handler error: {e}")
-        # Fallback to supervisor on any error
-        response = await _orchestrator.agent_process_request(
-            _user_input, 
-            _user_id, 
-            _session_id,
-            ClassifierResult(selected_agent=supervisor, confidence=1.0)
-        )
-    
-    print(f"--- Total processing time: {time.time() - start_time} seconds ---")
-    
-    # Print metadata
-    logger.info("\nMetadata:")
-    logger.info(f"Selected Agent: {response.metadata.agent_name}")
-    
-    # Handle response
-    if isinstance(response.output, str):
-        logger.info(response.output)
-    elif isinstance(response.output, ConversationMessage):
-        logger.info(response.output.content[0].get('text'))
-
+def response_to_empty_transcription(event):
     return {
         "sessionState": {
             "dialogAction": {
                 "type": "Close"
             },
             "intent": {
-                "name": _intent_name,
+                "name": event["sessionState"]["intent"]["name"],
                 "state": "Fulfilled"
             }
         },
         "messages": [{
             "contentType": "PlainText",
-            "content": response.output.content[0].get('text')
+            "content": "Would you repeat what you just said?"
         }]
     }
 
 
+def get_current_timestamp(timezone):
+    utc_now = datetime.now(ZoneInfo("UTC"))
+    try:
+        local_time = utc_now.astimezone(ZoneInfo(timezone))
+    except Exception as e:
+        # local_time = utc_now.astimezone(ZoneInfo("America/New_York"))
+        local_time = utc_now
+        logger.error(f"Wrong timezone {e = }")
+    formatted_time = local_time.strftime("%Y_%m_%d_%H_%M_%S")
+    return formatted_time
+
+
 def lambda_handler(event, context):
 
-    print("EVENT: -----", event)
+    #event = {'SchemaVersion': '1.0', 'Sequence': 3, 'InvocationEventType': 'ACTION_FAILED', 'ActionData': {'Type': 'CallAndBridge', 'Parameters': {'Endpoints': [{'BridgeEndpointType': 'AWS', 'Uri': '7000', 'Arn': 'arn:aws:chime:us-east-1:353485474178:vc/exmpb1pkojv3qkmdlebcym'}], 'CallTimeoutSeconds': 30, 'CallerIdNumber': '+17578277310', 'RingbackTone': {'Type': 'S3', 'BucketName': 'callandbridgestack-wavfiles205154476688', 'Key': 'ringback.wav'}, 'CallId': '644941c9-1a4c-46d6-bac4-4d7d81ede904'}, 'ErrorType': 'InvalidActionParameter', 'ErrorMessage': 'Resource does not belong to the current AWS account'}, 'CallDetails': {'TransactionId': 'a133b1e9-91bc-425c-8488-5cca5342bee6', 'AwsAccountId': '205154476688', 'AwsRegion': 'us-east-1', 'SipRuleId': '66023a6f-c28b-445f-97de-17bd382ee59a', 'SipMediaApplicationId': '20274012-cc85-41e4-afce-ae7913e56f7f', 'Participants': [{'CallId': '644941c9-1a4c-46d6-bac4-4d7d81ede904', 'ParticipantTag': 'LEG-A', 'To': '+16782030501', 'From': '+17578277310', 'Direction': 'Inbound', 'StartTimeInMilliseconds': '1740033373130', 'Status': 'Connected'}], 'TransactionAttributes': {'serviceCallType': 'TransferFD', 'fakeConfirmedItems': '', 'confirmedItems': ''}}}
+    print("LEX EVENT: -----", event)
 
-    transcription = event['transcriptions'][0].get('transcription', None)
-    intent_name = event["sessionState"]["intent"]["name"]
+    if 'InvocationEventType' in event and event['InvocationEventType'] == 'ACTION_FAILED' and event['CallDetails']['TransactionAttributes']['serviceCallType'] == 'TransferFD':
+        query = 'Front Desk is not available!create a front desk callback request ticket fo the user'
+        intent_name = "FallbackIntent"
+    
+    elif 'transcriptions' in event:
+        query = event['transcriptions'][0].get('transcription', None)
+        intent_name = event["sessionState"]["intent"]["name"]
 
-    print("transcription", transcription)
+        # Guardrail clauses for empty transcription
+        if not query:
+            return response_to_empty_transcription(event)
+        elif len(query.strip()) == 0:
+            return response_to_empty_transcription(event)
 
-    #session_attributes = event["sessionState"]["sessionAttributes"]
-    #{'hotel_city': 'Grapevine', 'eng_hours': '08:00 AM - 04:00 PM', 'hotel_timezone': 'America/New_York', 'room_number': '301', 'transfer_fo': '+16784336186', 'phone_number': '+16782030501', 'hotel_address': '2401 Bass Pro Drive', 'hotel_info': '', 'fd_hours': '07:00 AM - 07:00 PM', 'hotel_name': 'Embassy Suites by Hilton - DFW Airport North'}
+    agent_id = 'QPUIAGLFMO' 
+    agent_alias_id = "FN2KWQFPLG" # 
 
     hotel_number = '+16782030501'
-    hotel_info = s3_retrieve(hotel_number)
-    update_prompts(hotel_info)
+    room_number = '123'
+    logger.info(f"Default {hotel_number = }  {room_number = }")
+    hotel_info = {
+            "timezone": "America/New_York",
+            "fd_hour": "Cycle",
+            "fd_start_time": "07:00 AM",
+            "fd_end_time": "07:00 PM",
+            "eng_hour": "Cycle",
+            "eng_request_time": "tomorrow_08:00 AM",
+            "eng_start_time": "08:00 AM",
+            "eng_end_time": "04:00 PM",
+            "transfer_fo": "+16784336186",
+            "address": "2401 Bass Pro Drive",
+            "name": "Embassy Suites by Hilton - DFW Airport North",
+            "city": "Grapevine",
+            "class": "0"}
 
-    USER_ID = event['sessionId']
-    SESSION_ID = hotel_number
+    hotel_class = hotel_info["class"]
+    time_zone = hotel_info["timezone"]
+    fd_start_time = hotel_info["fd_start_time"]
+    fd_end_time = hotel_info["fd_end_time"]
+    eng_start_time = hotel_info["eng_start_time"]
+    eng_end_time = hotel_info["eng_end_time"]
 
-    print("USER_ID: -----", USER_ID)
-    print("SESSION_ID: -----", SESSION_ID)
-
-    orchestrator = MultiAgentOrchestrator(storage=memory_storage
-        )
+    if hotel_class == '0':
+        hotel_tone = "Luxury & Upper Upscale" 
+    elif hotel_class == '1':
+        hotel_tone = "Upscale & Upper Midscale"
+    else:
+        hotel_tone = "Midscale & Economy"
     
-    return asyncio.run(async_handler(intent_name, transcription, orchestrator, USER_ID, SESSION_ID))
+    unavailable_items, available_items, dept_items = items_availability(hotel_number)
+    current_datetime = get_current_timestamp(hotel_info['timezone'])
+
+    ## create a random id for session initiator id
+    session_id:str = event.get('sessionId', str(uuid.uuid4()))
+    memory_id:str = room_number # 'room123'
+    enable_trace:bool = False
+    end_session:bool = False
+    session_state = {
+         'sessionAttributes': {
+            'hotel_phone_number': hotel_number,
+            'room_number': room_number,
+            'hotel_info' : json.dumps(hotel_info)
+        },
+        'promptSessionAttributes': {
+            'hotel_tone' : hotel_tone,
+            'current_datetime': current_datetime,
+            'fd_start_time' : fd_start_time,
+            'fd_end_time' : fd_end_time,
+            'eng_start_time' : eng_start_time,
+            'eng_end_time': eng_end_time,
+            'unavailable_items': ', '.join(unavailable_items),
+            'available_items' : ', '.join(available_items),
+            'dept_items' : json.dumps(dept_items)
+        }
+    }
+    logger.info(f"{session_state = }")
+    
+    start_time = time.time()
+    contents, action_group = invoke_agent_helper(query, session_id, agent_id, agent_alias_id, enable_trace=enable_trace, memory_id=memory_id, session_state=session_state)
+    print(start_time)
+    print (f"{contents = }")
+    print (f"{action_group = }")
+
+    print("--- %s seconds for agent to finish creating response ---" % (time.time() - start_time))
+
+    if action_group == 'transferFD':
+        return {
+            "sessionState": {
+                "dialogAction": {
+                    "type": "Close"
+                },
+                "intent": {
+                    "name": intent_name,
+                    "state": "Fulfilled"
+                },
+                "sessionAttributes" : {
+                    "serviceType" : "TransferFD"
+                }
+            },
+            "messages": [{
+                "contentType": "PlainText",
+                "content": contents
+            }],
+            "sessionId": event["sessionId"]
+        }
+
+    else:
+        return {
+            "sessionState": {
+                "dialogAction": {
+                    "type": "Close"
+                },
+                "intent": {
+                    "name": intent_name,
+                    "state": "Fulfilled"
+                }
+            },
+            "messages": [{
+                "contentType": "PlainText",
+                "content": contents
+            }]
+        }
