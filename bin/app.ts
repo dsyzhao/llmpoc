@@ -18,14 +18,25 @@ if (!envConfig) {
   throw new Error(`Environment ${envName} is not defined in config`);
 }
 
-// Initialize the Guest Fulfillment Stack
-new GuestFulfillmentStack(app, `${typedConfig.application}-${envName}-guest-fulfillment-stack`, {
+// First, create the Bedrock Agent Stack
+const bedrockAgentStack = new BedrockAgentStack(app, `${typedConfig.application}-${envName}-bedrock-agent-stack`, {
   env: {
     account: envConfig.account,
     region: envConfig.region
   },
   environment: envConfig.environment,
   applicationName: typedConfig.application
+});
+
+// Then, create the Guest Fulfillment Stack with a reference to the Bedrock Agent Stack
+new GuestFulfillmentStack(app, `${typedConfig.application}-${envName}-guest-fulfillment-stack`, {
+  env: {
+    account: envConfig.account,
+    region: envConfig.region
+  },
+  environment: envConfig.environment,
+  applicationName: typedConfig.application,
+  bedrockAgentStack: bedrockAgentStack // Pass the reference
 });
 
 // Add CI/CD stack
@@ -39,14 +50,4 @@ new CICDStack(app, `${typedConfig.application}-${envName}-cicd-stack`, {
   workspaceId: '9be73cb9-4aa8-4d81-a92f-e9aa2b628207',
   workspaceName: 'na-dna',
   repositoryName: 'hospitality-voice-tech'
-});
-
-// Add Bedrock Agent stack
-new BedrockAgentStack(app, `${typedConfig.application}-${envName}-bedrock-agent-stack`, {
-  env: {
-    account: envConfig.account,
-    region: envConfig.region
-  },
-  environment: envConfig.environment,
-  applicationName: typedConfig.application
 }); 
