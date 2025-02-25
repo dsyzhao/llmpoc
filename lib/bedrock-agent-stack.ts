@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 import { CfnAgent, CfnAgentAlias, CfnGuardrail } from 'aws-cdk-lib/aws-bedrock';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as cr from 'aws-cdk-lib/custom-resources';
 
 interface BedrockAgentStackProps extends cdk.StackProps {
   environment: string;
@@ -282,7 +283,16 @@ export class BedrockAgentStack extends cdk.Stack {
           actionGroupExecutor: {
             customControl: 'RETURN_CONTROL'
           },
-          description: agentConfig.actionGroups.transferToFrontDesk.description
+          description: agentConfig.actionGroups.transferToFrontDesk.description,
+          functionSchema: {
+            functions: [
+              {
+                name: "transfer_to_front_desk",
+                description: "Transfer the conversation to a human agent at the front desk",
+                parameters: {}
+              }
+            ]
+          }
         }
       ]
     });
@@ -324,75 +334,15 @@ export class BedrockAgentStack extends cdk.Stack {
       })
     );
 
-    // Prepare the agent
-    const prepareAgent = new cdk.CustomResource(this, 'PrepareAgent', {
-      serviceToken: new cdk.custom_resources.Provider(this, 'PrepareAgentProvider', {
-        onEventHandler: new lambda.Function(this, 'PrepareAgentFunction', {
-          functionName: `${props.applicationName}-${props.environment}-stk-lambda-prepare-agent`,
-          runtime: lambda.Runtime.NODEJS_18_X,
-          handler: 'index.handler',
-          code: lambda.Code.fromInline(`
-            const AWS = require('aws-sdk');
-            exports.handler = async (event, context) => {
-              const bedrockAgent = new AWS.BedrockAgent();
-              
-              if (event.RequestType === 'Create' || event.RequestType === 'Update') {
-                try {
-                  await bedrockAgent.prepareAgent({
-                    agentId: '${agent.attrAgentId}'
-                  }).promise();
-                  
-                  return {
-                    PhysicalResourceId: '${agent.attrAgentId}',
-                    Data: { AgentId: '${agent.attrAgentId}' }
-                  };
-                } catch (error) {
-                  console.error('Error preparing agent:', error);
-                  throw error;
-                }
-              }
-              
-              return {
-                PhysicalResourceId: '${agent.attrAgentId}',
-                Data: { AgentId: '${agent.attrAgentId}' }
-              };
-            }
-          `),
-          timeout: cdk.Duration.minutes(5),
-          role: new iam.Role(this, 'PrepareAgentRole', {
-            assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-            roleName: `${props.applicationName}-${props.environment}-stk-iam-role-prepare-agent`,
-            managedPolicies: [
-              iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
-            ],
-            inlinePolicies: {
-              'BedrockAgentAccess': new iam.PolicyDocument({
-                statements: [
-                  new iam.PolicyStatement({
-                    actions: ['bedrock:PrepareAgent'],
-                    resources: [`arn:aws:bedrock:${this.region}:${this.account}:agent/${agent.attrAgentId}`]
-                  })
-                ]
-              })
-            }
-          })
-        })
-      }).serviceToken,
-      properties: {
-        AgentId: agent.attrAgentId
-      }
-    });
-    
-    // Update dependencies - now depends directly on agent
-    prepareAgent.node.addDependency(agent);
-
     // Create agent alias
     const agentAlias = new CfnAgentAlias(this, 'HotelFrontDeskAgentAlias', {
       agentId: agent.attrAgentId,
       agentAliasName: `${props.environment}-alias`,
       description: `${props.environment} alias for Hotel Front Desk Agent`
     });
-    agentAlias.node.addDependency(prepareAgent);
+
+    // Add dependency directly on the agent
+    agentAlias.node.addDependency(agent);
 
     // Store the agent ID and alias ID for reference by other stacks
     this.agentId = agent.attrAgentId;
