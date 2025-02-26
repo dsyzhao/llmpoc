@@ -24,7 +24,7 @@ export class BedrockAgentStack extends cdk.Stack {
     const agentConfig = {
       description: "Hotel Front Desk Agent helping guests with their requests",
       instruction: "You are a friendly and helpful AI assistant designed to assist hotel guests with their requests and questions. You will receive three types of inputs: 1. Handling Item or Service Requests. 2. Answer guest inquiries about nearby restaurants, tourist attractions, or local services. 3. request to talk to the front desk",
-      foundationModel: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      foundationModel: "arn:aws:bedrock:us-east-1:205154476688:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
       memoryTime: 30,
       actionGroups: {
         ticketBooking: {
@@ -96,6 +96,21 @@ export class BedrockAgentStack extends cdk.Stack {
           iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
         ]
       })
+    });
+
+    // Add resource-based policy statements to allow Bedrock to invoke the Lambda functions
+    new lambda.CfnPermission(this, 'BedrockInvokeTicketFunction', {
+      action: 'lambda:InvokeFunction',
+      functionName: ticketFunction.functionName,
+      principal: 'bedrock.amazonaws.com',
+      sourceAccount: this.account
+    });
+
+    new lambda.CfnPermission(this, 'BedrockInvokeLocalAreaInfoFunction', {
+      action: 'lambda:InvokeFunction',
+      functionName: localAreaInfoFunction.functionName,
+      principal: 'bedrock.amazonaws.com',
+      sourceAccount: this.account
     });
 
     // Then create the IAM role with references to the Lambda functions
