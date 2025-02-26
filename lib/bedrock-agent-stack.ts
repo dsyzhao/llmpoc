@@ -24,7 +24,7 @@ export class BedrockAgentStack extends cdk.Stack {
     const agentConfig = {
       description: "Hotel Front Desk Agent helping guests with their requests",
       instruction: "You are a friendly and helpful AI assistant designed to assist hotel guests with their requests and questions. You will receive three types of inputs: 1. Handling Item or Service Requests. 2. Answer guest inquiries about nearby restaurants, tourist attractions, or local services. 3. request to talk to the front desk",
-      foundationModel: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      foundationModel: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
       memoryTime: 30,
       actionGroups: {
         ticketBooking: {
@@ -114,6 +114,41 @@ export class BedrockAgentStack extends cdk.Stack {
       resources: [
         ticketFunction.functionArn,
         localAreaInfoFunction.functionArn
+      ]
+    }));
+
+    // Update local-area-info Lambda Bedrock permissions to specific models
+    agentRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream'
+      ],
+      resources: [
+        // Allow access to Claude model in all available sonnet v2 regions for cross-region inference feature
+        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        // Add Haiku model permissions for all available regions
+        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0`,
+        `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0`,
+        `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0`,
+        // Add Nova Micro model permissions for all available regions
+        `arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-east-2::foundation-model/amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-micro-v1:0`,
+        // Allow access to inference profiles in all sonnet v2 regions for cross-region inference feature
+        `arn:aws:bedrock:us-east-1:${this.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        `arn:aws:bedrock:us-east-2:${this.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        `arn:aws:bedrock:us-west-2:${this.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        // Add Haiku inference profiles for all regions
+        `arn:aws:bedrock:us-east-1:${this.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0`,
+        `arn:aws:bedrock:us-east-2:${this.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0`,
+        `arn:aws:bedrock:us-west-2:${this.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0`,
+        // Add Nova Micro inference profiles for all regions
+        `arn:aws:bedrock:us-east-1:${this.account}:inference-profile/us.amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-east-2:${this.account}:inference-profile/us.amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-west-2:${this.account}:inference-profile/us.amazon.nova-micro-v1:0`
       ]
     }));
 
