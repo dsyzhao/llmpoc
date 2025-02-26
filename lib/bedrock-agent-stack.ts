@@ -251,6 +251,7 @@ export class BedrockAgentStack extends cdk.Stack {
         guardrailIdentifier: guardrail.attrGuardrailId,
         guardrailVersion: 'DRAFT'
       },
+      autoPrepare: true,
       promptOverrideConfiguration: {
         promptConfigurations: [
           {
@@ -288,7 +289,7 @@ export class BedrockAgentStack extends cdk.Stack {
                 name: "request_ticket_api_tool",
                 description: "use this action group to create request ticket for item and/or service",
                 parameters: {
-                  userRequest: {
+                  userInput: {
                     type: "string",
                     description: "The user request (transcription)",
                     required: true
@@ -298,8 +299,7 @@ export class BedrockAgentStack extends cdk.Stack {
                     description: "The preferred delivery time for the request.",
                     required: true
                   }
-                },
-                requireConfirmation: 'ENABLED'
+                }
               }
             ]
           }
@@ -317,7 +317,7 @@ export class BedrockAgentStack extends cdk.Stack {
                 name: "get_info_tool",
                 description: "use this action group to answer questions about local area attraction near the hotel",
                 parameters: {
-                  userRequest: {
+                  userInput: {
                     type: "string",
                     description: "The user request (transcription)",
                     required: true
@@ -338,7 +338,7 @@ export class BedrockAgentStack extends cdk.Stack {
             functions: [
               {
                 name: "transfer_to_front_desk",
-                description: "Transfer the conversation to a human agent at the front desk",
+                description: "Action group to transfer the call to front desk if the user asked for",
                 parameters: {}
               }
             ]
@@ -384,7 +384,7 @@ export class BedrockAgentStack extends cdk.Stack {
       })
     );
 
-    // Create agent alias
+    // Create the agent alias with a consistent name
     const agentAlias = new CfnAgentAlias(this, 'HotelFrontDeskAgentAlias', {
       agentId: agent.attrAgentId,
       agentAliasName: `${props.environment}-alias`,

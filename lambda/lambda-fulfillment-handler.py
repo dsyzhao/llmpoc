@@ -235,7 +235,6 @@ def lambda_handler(event, context):
     
     start_time = time.time()
     contents, action_group = invoke_agent_helper(query, session_id, agent_id, agent_alias_id, enable_trace=enable_trace, memory_id=memory_id, session_state=session_state)
-    print(start_time)
     print (f"{contents = }")
     print (f"{action_group = }")
 
