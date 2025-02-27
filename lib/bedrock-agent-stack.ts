@@ -55,6 +55,10 @@ export class BedrockAgentStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
         exclude: ['*', '!lambda-create-ticket.py']
       }),
+      environment: {
+        LAMBDA: `${props.applicationName}-${props.environment}-stk-lambda-ticket-api-call`,
+        REGION: `${this.region}`
+      },
       role: new iam.Role(this, 'CreateTicketLambdaRole', {
         roleName: `${props.applicationName}-${props.environment}-stk-iam-role-create-ticket-lambda`,
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -72,6 +76,10 @@ export class BedrockAgentStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
         exclude: ['*', '!lambda-ticket-api-call.py']
       }),
+      environment: {
+        BUCKET: "",
+        REGION: `${this.region}`
+      },
       role: new iam.Role(this, 'TicketApiCallLambdaRole', {
         roleName: `${props.applicationName}-${props.environment}-stk-iam-role-ticket-api-call-lambda`,
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -89,6 +97,9 @@ export class BedrockAgentStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
         exclude: ['*', '!lambda-local-area-info.py']
       }),
+      environment: {
+        REGION: `${this.region}`
+      },
       role: new iam.Role(this, 'LocalAreaInfoLambdaRole', {
         roleName: `${props.applicationName}-${props.environment}-stk-iam-role-local-area-info-lambda`,
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),

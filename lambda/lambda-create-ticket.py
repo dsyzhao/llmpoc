@@ -36,7 +36,7 @@ def get_request_ticket_api(userInput: str, phoneNumber: str, confirmTime:str, ro
     logger.info(f"{payload = }")
 
     response = lambda_client.invoke(
-        FunctionName="hotel-help-desk-assistant-stk-lambda-ticket-api-call", 
+        FunctionName=os.environ.get('LAMBDA'),
         InvocationType='Event', # Event - async; 'RequestResponse' - wait for response; DryRun - for testing
         LogType='None',
         Payload=payload)

@@ -57,7 +57,9 @@ export class GuestFulfillmentStack extends cdk.Stack {
       environment: props.bedrockAgentStack ? {
         // Add environment variables for the Bedrock agent if available
         AGENT_ID: props.bedrockAgentStack.agentId,
-        AGENT_ALIAS_ID: props.bedrockAgentStack.agentAliasId
+        AGENT_ALIAS_ID: props.bedrockAgentStack.agentAliasId,
+        REGION: `${this.region}`,
+        BUCKET: "",
       } : {},
       role: new iam.Role(this, 'FulfillmentLambdaRole', {
         roleName: `${props.applicationName}-${props.environment}-stk-iam-role-fulfillment-lambda`,
