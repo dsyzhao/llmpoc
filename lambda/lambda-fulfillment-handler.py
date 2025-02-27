@@ -4,6 +4,7 @@ import uuid
 import pprint
 import json
 import time
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -170,9 +171,10 @@ def lambda_handler(event, context):
         elif len(query.strip()) == 0:
             return response_to_empty_transcription(event)
 
-    agent_id = 'QPUIAGLFMO' 
-    agent_alias_id = "FN2KWQFPLG" # 
-
+    # Get agent IDs from environment variables with fallback to hardcoded values
+    agent_id = os.environ.get('AGENT_ID', 'QPUIAGLFMO')
+    agent_alias_id = os.environ.get('AGENT_ALIAS_ID', 'FN2KWQFPLG')
+    
     hotel_number = '+16782030501'
     room_number = '123'
     logger.info(f"Default {hotel_number = }  {room_number = }")
@@ -235,7 +237,6 @@ def lambda_handler(event, context):
     
     start_time = time.time()
     contents, action_group = invoke_agent_helper(query, session_id, agent_id, agent_alias_id, enable_trace=enable_trace, memory_id=memory_id, session_state=session_state)
-    print(start_time)
     print (f"{contents = }")
     print (f"{action_group = }")
 

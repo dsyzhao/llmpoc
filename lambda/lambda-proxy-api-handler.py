@@ -35,12 +35,22 @@ def handler(event, context):
                 'body': json.dumps({'error': 'Missing request body'})
             }
             
-        # Extract required parameters
+        # Extract required parameters from environment variables or request body
         bot_id = body.get('botId', os.getenv('BOT_ID'))
         bot_alias_id = body.get('botAliasId', os.getenv('BOT_ALIAS_ID'))
         locale_id = body.get('localeId', os.getenv('LOCALE_ID'))
         session_id = body.get('sessionId', 'default-session')
         text_input = body.get('text')
+        
+        # Log the bot IDs we're using
+        logger.info(f"Using bot_id: {bot_id}, bot_alias_id: {bot_alias_id}")
+        
+        if not bot_id or not bot_alias_id:
+            logger.error("Missing bot_id or bot_alias_id. Check environment variables.")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': 'Missing Lex bot configuration'})
+            }
         
         # Extract session attributes
         phone_number = body.get('phone_number', '')
@@ -63,10 +73,13 @@ def handler(event, context):
                     f"sessionId={session_id}, text={text_input}")
         logger.info(f"Session attributes (ordered): {json.dumps(session_attributes)}")
 
+        # Add at the beginning of the handler function
+        logger.info(f"Lambda environment variables: BOT_ID={os.getenv('BOT_ID')}, BOT_ALIAS_ID={os.getenv('BOT_ALIAS_ID')}")
+
         try:
             response = lex_client.recognize_text(
-                botId="RMDVGYE12J",#bot_id,
-                botAliasId="9SHPGBBFW1",#bot_alias_id,
+                botId=bot_id,
+                botAliasId=bot_alias_id,
                 localeId=locale_id,
                 sessionId=session_id,
                 text=text_input,
@@ -87,12 +100,19 @@ def handler(event, context):
             }
             
         except ClientError as e:
-            logger.error(f"Error calling Lex: {str(e)}")
+            error_message = str(e)
+            logger.error(f"Error calling Lex: {error_message}")
+            
+            # Log the ARN being accessed for debugging
+            arn = f"arn:aws:lex:{lex_client.meta.region_name}:{context.invoked_function_arn.split(':')[4]}:bot-alias/{bot_id}/{bot_alias_id}"
+            logger.error(f"Attempted to access Lex bot ARN: {arn}")
+            
             return {
                 'statusCode': 500,
                 'body': json.dumps({
                     'error': 'Error communicating with Lex',
-                    'details': str(e)
+                    'details': error_message,
+                    'attempted_arn': arn
                 })
             }
             

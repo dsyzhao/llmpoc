@@ -7,10 +7,12 @@ import { Construct } from 'constructs';
 import * as path from 'path';
 import * as lexConfig from '../config/lex-bot-guest-chat-config.json';
 import { CfnBot } from 'aws-cdk-lib/aws-lex';
+import { BedrockAgentStack } from './bedrock-agent-stack';
 
 interface LexbotStackProps extends cdk.StackProps {
   environment: string;
   applicationName: string;
+  bedrockAgentStack?: BedrockAgentStack; // Optional reference to the Bedrock agent stack
 }
 
 export class GuestFulfillmentStack extends cdk.Stack {
@@ -43,7 +45,7 @@ export class GuestFulfillmentStack extends cdk.Stack {
       } as CfnBot.BotLocaleProperty]
     });
 
-    // 2. Create fulfillment Lambda
+    // 2. Create fulfillment Lambda with environment variables for Bedrock agent
     const fulfillmentFunction = new lambda.Function(this, 'FulfillmentHandler', {
       functionName: `${props.applicationName}-${props.environment}-stk-lambda-fulfillment-handler`,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -52,6 +54,11 @@ export class GuestFulfillmentStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
         exclude: ['*', '!lambda-fulfillment-handler.py']
       }),
+      environment: props.bedrockAgentStack ? {
+        // Add environment variables for the Bedrock agent if available
+        AGENT_ID: props.bedrockAgentStack.agentId,
+        AGENT_ALIAS_ID: props.bedrockAgentStack.agentAliasId
+      } : {},
       role: new iam.Role(this, 'FulfillmentLambdaRole', {
         roleName: `${props.applicationName}-${props.environment}-stk-iam-role-fulfillment-lambda`,
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -60,58 +67,6 @@ export class GuestFulfillmentStack extends cdk.Stack {
         ]
       })
     });
-
-    const ticketFunction = new lambda.Function(this, 'CreateTicket', {
-      functionName: `${props.applicationName}-${props.environment}-stk-lambda-create-ticket`,
-      runtime: lambda.Runtime.PYTHON_3_12,
-      timeout: cdk.Duration.seconds(180),
-      handler: 'lambda-create-ticket.lambda_handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
-        exclude: ['*', '!lambda-create-ticket.py']
-      }),
-      role: new iam.Role(this, 'CreateTicketLambdaRole', {
-        roleName: `${props.applicationName}-${props.environment}-stk-iam-role-create-ticket-lambda`,
-        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-        managedPolicies: [
-          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
-        ]
-      })
-    });
-
-    const ticketApiCall = new lambda.Function(this, 'CallAPI', {
-      functionName: `${props.applicationName}-${props.environment}-stk-lambda-ticket-api-call`,
-      runtime: lambda.Runtime.PYTHON_3_12,
-      timeout: cdk.Duration.seconds(180),
-      handler: 'lambda-ticket-api-call.lambda_handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
-        exclude: ['*', '!lambda-ticket-api-call.py']
-      }),
-      role: new iam.Role(this, 'TicketApiCallLambdaRole', {
-        roleName: `${props.applicationName}-${props.environment}-stk-iam-role-ticket-api-call-lambda`,
-        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-        managedPolicies: [
-          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
-        ]
-      })
-    });
-
-    // Add S3 read permissions for the fulfillment Lambda
-    fulfillmentFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['s3:GetObject'],
-        resources: [`arn:aws:s3:::botconfig${this.account}v2/*`]
-      })
-    );
-
-    // Add Bedrock permissions for the fulfillment Lambda
-    fulfillmentFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['bedrock:InvokeAgent'],
-        resources: [`arn:aws:bedrock:${this.region}:${this.account}:agent-alias/*`]
-      })
-    );
 
     // 3. Create bot version with proper reference
     const botVersion = new lexv2.CfnBotVersion(this, 'LexBotVersion', {
@@ -149,7 +104,7 @@ export class GuestFulfillmentStack extends cdk.Stack {
     const proxyFunction = new lambda.Function(this, 'ProxyApiHandler', {
       functionName: `${props.applicationName}-${props.environment}-stk-lambda-proxy-api-handler`,
       runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'lambda-proxy-api-handler.lambda_handler',
+      handler: 'lambda-proxy-api-handler.handler',
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
       environment: {
@@ -176,57 +131,43 @@ export class GuestFulfillmentStack extends cdk.Stack {
       resources: [fulfillmentFunction.functionArn]
     }));
 
-    // Add Lex permissions to proxy Lambda
+    // Add Lex permissions to proxy Lambda - use a broader permission scope
     proxyFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['lex:RecognizeText'],
         resources: [
+          // The bot created in our CDK stack
           `arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.ref}/${botAlias.ref}`,
-          `arn:aws:lex:${this.region}:${this.account}:bot-alias/CLKLPPZYND/PYRKBGNF98`
+          // Allow access to all bot aliases in the account for development/testing
+          `arn:aws:lex:${this.region}:${this.account}:bot-alias/*`
         ]
       })
     );
 
-    // Add Lambda invoke permissions for the create-ticket Lambda
-    ticketFunction.addToRolePolicy(
+    // Add S3 read permissions for the fulfillment Lambda
+    fulfillmentFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['lambda:InvokeFunction'],
-        resources: [ticketApiCall.functionArn]
+        actions: ['s3:GetObject'],
+        resources: [`arn:aws:s3:::botconfig${this.account}v2/*`]
       })
     );
 
-    // Add Lambda permissions for Bedrock to invoke the create-ticket Lambda
-    ticketFunction.addPermission('BedrockInvocation', {
-      principal: new iam.ServicePrincipal('bedrock.amazonaws.com'),
-      action: 'lambda:InvokeFunction',
-      sourceArn: `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/*`
-    });
-
-    // Create the local area info Lambda function if it doesn't exist already
-    const localAreaInfoFunction = new lambda.Function(this, 'LocalAreaInfo', {
-      functionName: `${props.applicationName}-${props.environment}-stk-lambda-local-area-info`,
-      runtime: lambda.Runtime.PYTHON_3_12,
-      timeout: cdk.Duration.seconds(180),
-      handler: 'lambda-local-area-info.lambda_handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
-        exclude: ['*', '!lambda-local-area-info.py']
-      }),
-      role: new iam.Role(this, 'LocalAreaInfoLambdaRole', {
-        roleName: `${props.applicationName}-${props.environment}-stk-iam-role-local-area-info-lambda`,
-        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-        managedPolicies: [
-          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+    // Add Bedrock permissions for the fulfillment Lambda - restrict to specific agents
+    fulfillmentFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:InvokeAgent'],
+        resources: [
+          // The agent created in our CDK stack
+          props.bedrockAgentStack ? 
+            `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/${props.bedrockAgentStack.agentId}/*` : 
+            `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/*`,
+          // The hardcoded agent in the Lambda (QPUIAGLFMO/FN2KWQFPLG)
+          `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/QPUIAGLFMO/*`
         ]
       })
-    });
-
-    // Add Lambda permissions for Bedrock to invoke the local-area-info Lambda
-    localAreaInfoFunction.addPermission('BedrockInvocation', {
-      principal: new iam.ServicePrincipal('bedrock.amazonaws.com'),
-      action: 'lambda:InvokeFunction',
-      sourceArn: `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/*`
-    });
+    );
 
     // Create API Gateway Logging Role
     const apiGatewayLoggingRole = new iam.Role(this, 'ApiGatewayLoggingRole', {
