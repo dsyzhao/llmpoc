@@ -7,10 +7,12 @@ import { Construct } from 'constructs';
 import * as path from 'path';
 import * as lexConfig from '../config/lex-bot-guest-chat-config.json';
 import { CfnBot } from 'aws-cdk-lib/aws-lex';
+import { BedrockAgentStack } from './bedrock-agent-stack';
 
 interface LexbotStackProps extends cdk.StackProps {
   environment: string;
   applicationName: string;
+  bedrockAgentStack?: BedrockAgentStack; // Optional reference to the Bedrock agent stack
 }
 
 export class GuestFulfillmentStack extends cdk.Stack {
@@ -23,54 +25,68 @@ export class GuestFulfillmentStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('lexv2.amazonaws.com'),
     });
 
-    // Then create bot using the role
-    const bot = new lexv2.CfnBot(this, 'LexBotGuestChat', {
-      name: `${props.applicationName}-${props.environment}-stk-lex-bot-guest-chat`,
+    // 1. Create bot first
+    const bot = new lexv2.CfnBot(this, 'LexBotGuestFulfillment', {
+      name: `${props.applicationName}-${props.environment}-stk-lex-bot-guest-fulfillment`,
       dataPrivacy: { ChildDirected: false },
       idleSessionTtlInSeconds: 300,
       roleArn: lexRole.roleArn,
       autoBuildBotLocales: true,
       
       botLocales: [{
-        localeId: lexConfig.locale.id,
-        nluConfidenceThreshold: lexConfig.locale.nluConfidenceThreshold,
+        localeId: lexConfig.identifier,
+        nluConfidenceThreshold: lexConfig.nluConfidenceThreshold,
         voiceSettings: {
-          voiceId: lexConfig.locale.voice.id
-        },
+          engine: 'standard',
+          voiceId: lexConfig.voiceSettings.voiceId
+        } as CfnBot.VoiceSettingsProperty,
+        generativeAISettings: lexConfig.generativeAISettings,
         intents: lexConfig.intents as CfnBot.IntentProperty[]
-      }]
+      } as CfnBot.BotLocaleProperty]
     });
 
-    // Create Lambda function for bot fulfillment
+    // 2. Create fulfillment Lambda with environment variables for Bedrock agent
     const fulfillmentFunction = new lambda.Function(this, 'FulfillmentHandler', {
       functionName: `${props.applicationName}-${props.environment}-stk-lambda-fulfillment-handler`,
-      runtime: lambda.Runtime.PYTHON_3_9,
-      handler: 'lambda-fulfillment-handler.handler',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      timeout: cdk.Duration.seconds(180),
+      handler: 'lambda-fulfillment-handler.lambda_handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda'), {
         exclude: ['*', '!lambda-fulfillment-handler.py']
+      }),
+      environment: props.bedrockAgentStack ? {
+        // Add environment variables for the Bedrock agent if available
+        AGENT_ID: props.bedrockAgentStack.agentId,
+        AGENT_ALIAS_ID: props.bedrockAgentStack.agentAliasId,
+        REGION: `${this.region}`,
+        BUCKET: "botconfig205154476688v2",
+      } : {},
+      role: new iam.Role(this, 'FulfillmentLambdaRole', {
+        roleName: `${props.applicationName}-${props.environment}-stk-iam-role-fulfillment-lambda`,
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+        ]
       })
     });
 
-    // Create Bot Alias with timestamp to ensure uniqueness
-    const uniqueAliasName = `guest-chat-alias-${Date.now()}`;
-
+    // 3. Create bot version with proper reference
     const botVersion = new lexv2.CfnBotVersion(this, 'LexBotVersion', {
       botId: bot.attrId,
       botVersionLocaleSpecification: [{
-        localeId: 'en_US',
+        localeId: lexConfig.identifier,
         botVersionLocaleDetails: {
           sourceBotVersion: 'DRAFT'
         }
       }]
     });
-
-    // Add dependency to ensure bot is created first
     botVersion.addDependency(bot);
 
+    // 4. Create alias with proper references
     const botAlias = new lexv2.CfnBotAlias(this, 'LexBotAlias', {
-      botAliasName: uniqueAliasName,
+      botAliasName: `guest-chat-alias-${props.environment}`,
       botId: bot.attrId,
-      botVersion: botVersion.attrBotVersion,
+      botVersion: '1',
       botAliasLocaleSettings: [{
         botAliasLocaleSetting: {
           enabled: true,
@@ -81,18 +97,18 @@ export class GuestFulfillmentStack extends cdk.Stack {
             }
           }
         },
-        localeId: 'en_US'
+        localeId: lexConfig.identifier
       }]
     });
-
-    // Add dependency to ensure version is created before alias
     botAlias.addDependency(botVersion);
 
     // Create Proxy Lambda for API Gateway
     const proxyFunction = new lambda.Function(this, 'ProxyApiHandler', {
       functionName: `${props.applicationName}-${props.environment}-stk-lambda-proxy-api-handler`,
-      runtime: lambda.Runtime.PYTHON_3_9,
+      runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'lambda-proxy-api-handler.handler',
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
       environment: {
         BOT_ID: bot.attrId,
         BOT_ALIAS_ID: botAlias.attrBotAliasId,
@@ -103,17 +119,55 @@ export class GuestFulfillmentStack extends cdk.Stack {
       })
     });
 
-    // Grant Lex permissions to invoke the Lambda function
+    // Add specific Lambda permission for this bot/alias
     fulfillmentFunction.addPermission('LexInvocation', {
       principal: new iam.ServicePrincipal('lexv2.amazonaws.com'),
       action: 'lambda:InvokeFunction',
+      sourceArn: `arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.ref}/*`
     });
 
-    // Add Lex permissions to proxy Lambda
+    // Add Lex role permissions
+    lexRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['lambda:InvokeFunction'],
+      resources: [fulfillmentFunction.functionArn]
+    }));
+
+    // Add Lex permissions to proxy Lambda - use a broader permission scope
     proxyFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['lex:RecognizeText'],
-        resources: [`arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.attrId}/${botAlias.attrBotAliasId}`]
+        resources: [
+          // The bot created in our CDK stack
+          `arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.ref}/${botAlias.ref}`,
+          // Allow access to all bot aliases in the account for development/testing
+          `arn:aws:lex:${this.region}:${this.account}:bot-alias/*`
+        ]
+      })
+    );
+
+    // Add S3 read permissions for the fulfillment Lambda
+    fulfillmentFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:GetObject'],
+        resources: [`arn:aws:s3:::botconfig${this.account}v2/*`]
+      })
+    );
+
+    // Add Bedrock permissions for the fulfillment Lambda - restrict to specific agents
+    fulfillmentFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:InvokeAgent'],
+        resources: [
+          // The agent created in our CDK stack
+          props.bedrockAgentStack ? 
+            `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/${props.bedrockAgentStack.agentId}/*` : 
+            `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/*`,
+          // The hardcoded agent in the Lambda (QPUIAGLFMO/FN2KWQFPLG)
+          `arn:aws:bedrock:${this.region}:${this.account}:agent-alias/QPUIAGLFMO/*`
+        ]
       })
     );
 
@@ -138,6 +192,9 @@ export class GuestFulfillmentStack extends cdk.Stack {
       deployOptions: {
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: true
+      },
+      defaultMethodOptions: {
+        authorizationType: apigateway.AuthorizationType.IAM
       }
     });
 
@@ -169,5 +226,6 @@ export class GuestFulfillmentStack extends cdk.Stack {
       value: bot.attrId,
       description: 'Lex Bot ID'
     });
+
   }
 } 

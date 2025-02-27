@@ -6,14 +6,12 @@ import json
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from functools import lru_cache
-import os
 
 
 logging.basicConfig(format='[%(asctime)s] p%(process)s {%(filename)s:%(lineno)d} %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-session = boto3.Session(region_name=os.environ.get('REGION', 'us-east-1'))
+session = boto3.Session(region_name='us-east-1')
 bedrock_agent_client = session.client('bedrock-agent')
 bedrock_agent_runtime_client = session.client('bedrock-agent-runtime')
 
@@ -91,10 +89,10 @@ def invoke_agent_helper(query, session_id, agent_id, alias_id, enable_trace=Fals
     except Exception as e:
         raise Exception("unexpected event.", e)
 
-@lru_cache(maxsize=128)
+
 def items_availability(hotel_number: str):
     s3_client = boto3.client('s3')
-    bucket_name = os.environ.get('BUCKET', 'botconfig205154476688v2') # 'botconfig205154476688v2'
+    bucket_name = 'botconfig205154476688v2'
     file_path = f'{hotel_number}serviceInfo.json'
     try:
         response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
@@ -122,38 +120,6 @@ def items_availability(hotel_number: str):
     logger.info(f"{dept_items = }")
 
     return unavailable_items, available_items, dept_items
-
-@lru_cache(maxsize=128)
-def get_hotel_info_from_s3(hotel_number: str):
-    try:
-        s3_client = boto3.client('s3')
-        bucket_name = os.environ.get('BUCKET', 'botconfig205154476688v2') # 'botconfig205154476688v2'
-        file_path = 'hotel_number.json'
-
-        response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
-        data = response['Body'].read().decode('utf-8')
-        data = json.loads(data)
-
-        hotel_info = data[hotel_number]
-        print(f"HOTEL INFO FROM S3: {hotel_info = }")
-    except:
-        hotel_info = {
-                "timezone": "America/New_York",
-                "fd_hour": "Cycle",
-                "fd_start_time": "07:00 AM",
-                "fd_end_time": "07:00 PM",
-                "eng_hour": "Cycle",
-                "eng_request_time": "tomorrow_08:00 AM",
-                "eng_start_time": "08:00 AM",
-                "eng_end_time": "04:00 PM",
-                "transfer_fo": "+16784336186",
-                "address": "2401 Bass Pro Drive",
-                "name": "Embassy Suites by Hilton - DFW Airport North",
-                "city": "Grapevine",
-                "class": "0"}
-        print(f"HOTEL INFO FROM S3 FAILED")
-    return hotel_info
-
 
 def response_to_empty_transcription(event):
     return {
@@ -191,7 +157,7 @@ def lambda_handler(event, context):
     print("LEX EVENT: -----", event)
 
     if 'InvocationEventType' in event and event['InvocationEventType'] == 'ACTION_FAILED' and event['CallDetails']['TransactionAttributes']['serviceCallType'] == 'TransferFD':
-        query = 'Front Desk is not available!create a front desk callback request ticket for the user'
+        query = 'Front Desk is not available!create a front desk callback request ticket fo the user'
         intent_name = "FallbackIntent"
     
     elif 'transcriptions' in event:
@@ -204,21 +170,26 @@ def lambda_handler(event, context):
         elif len(query.strip()) == 0:
             return response_to_empty_transcription(event)
 
-    agent_id = os.environ.get('AGENT_ID', 'QPUIAGLFMO')
-    agent_alias_id = os.environ.get('AGENT_ALIAS_ID', 'FN2KWQFPLG')
+    agent_id = 'QPUIAGLFMO' 
+    agent_alias_id = "FN2KWQFPLG" # 
 
-    if 'phone_number' in event:
-        hotel_number = event["phone_number"]
-    else:
-        hotel_number = '+16782030501' # for test purpose
-
-    if 'room_number' in event:
-        room_number = event["room_number"]
-    else:
-        room_number = '123' # for test purpose
+    hotel_number = '+16782030501'
+    room_number = '123'
     logger.info(f"Default {hotel_number = }  {room_number = }")
-
-    hotel_info = get_hotel_info_from_s3(hotel_number)
+    hotel_info = {
+            "timezone": "America/New_York",
+            "fd_hour": "Cycle",
+            "fd_start_time": "07:00 AM",
+            "fd_end_time": "07:00 PM",
+            "eng_hour": "Cycle",
+            "eng_request_time": "tomorrow_08:00 AM",
+            "eng_start_time": "08:00 AM",
+            "eng_end_time": "04:00 PM",
+            "transfer_fo": "+16784336186",
+            "address": "2401 Bass Pro Drive",
+            "name": "Embassy Suites by Hilton - DFW Airport North",
+            "city": "Grapevine",
+            "class": "0"}
 
     hotel_class = hotel_info["class"]
     time_zone = hotel_info["timezone"]
