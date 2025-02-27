@@ -294,7 +294,7 @@ export class BedrockAgentStack extends cdk.Stack {
                     description: "The user request (transcription)",
                     required: true
                   },
-                  ConfirmTime: {
+                  confirmTime: {
                     type: "string",
                     description: "The preferred delivery time for the request.",
                     required: true
