@@ -3,11 +3,12 @@ import boto3
 import urllib3
 import datetime
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-session = boto3.Session(region_name='us-east-1')
+session = boto3.Session(region_name=os.environ.get('REGION', 'us-east-1'))
 bedrock_client = session.client('bedrock-runtime')
 
 def get_item(userInput: str, items: str):
@@ -17,25 +18,6 @@ def get_item(userInput: str, items: str):
     """
 
     MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
-
-    # Define your system prompt(s).
-    # system = [
-    #     {
-    #         "text": f"""
-    #         From the provided user request choose the right category for name of the requested service items and the quantity of the item. 
-            
-    #         you should follow below guidelines to find the right categories:
-    #         <guidelines>
-    #         - first look for exact match
-    #         - if no exact match is found then look for semantically similar group
-    #         - the output should be a list json object like [{{"item": "your selected category", "quantity": "the quantity asked"}}]. for example if someone asked for one blanket for room 851 at 10 AM tomorrow, the output should be : [{{"item": "Blanket", "quantity": "1"}}]
-    #         - only return the selected category in the json object nothing else.
-    #         - do not include any preamble in your response.
-    #         </guidelines> 
-    #             here are the possible options: {items}
-    #         """
-    #     }
-    # ]
 
     system = [
         {
@@ -141,7 +123,7 @@ def get_request_ticket_api(item, serviceProfile, quantity, userInput, roomNumber
     logger.info(f"{api_response = }")
     return json.dumps(api_response)
 
-def s3_retrieve(hotel_number, bucket_name = 'botconfig205154476688v2'):
+def s3_retrieve(hotel_number, bucket_name):
     s3_client = boto3.client('s3')
     
     service_info_path = f'{hotel_number}serviceInfo.json'
@@ -160,7 +142,8 @@ def lambda_handler(event, context):
     logger.info(f"{event = }")
     
     phone_number = event['phoneNumber']
-    json_service_info = s3_retrieve(phone_number)
+    bucket = os.environ.get('BUCKET', 'us-east-1') # 'botconfig205154476688v2'
+    json_service_info = s3_retrieve(phone_number, bucket)
     # available_items = [k for k, v in data.items() if v['Avaliable'] == 'Yes']
     logger.info(f"{json_service_info = }")
     items = json_service_info.keys()
@@ -180,47 +163,3 @@ def lambda_handler(event, context):
             event['confirmTime']
             )
     return True
-
-
-# APPENDIX
-    # # Define your system prompt(s).
-    # system = [
-    #     {
-    #         "text": """from the provided user request choose the right category for name of the requested service items and the quantity of the item. 
-            
-    #         you should follow below guidelines to find the right categories:
-    #         <guidelines>
-    #         - first look for exact match
-    #         - if no exact match is found then look for semantically similar group
-    #         - the output should be a list json object like [{"item": "your selected category", "quantity": "the quantity asked"]. for example if someone asked for one blanket for room 851 at 10 AM tomorrow, the output should be : [{"item": "Blanket", "quantity": "1"}]
-    #         - only return the selected category in the json object nothing else.
-    #         - do not include any preamble in your response.
-    #         </guidelines> 
-    #             here are the possible options: Menu, Dish Pick Up, Toilet Handle, Toilet, Thermostat, Temperature Control, Smoke Alarm,
-    #             Sliding Door, Sink Stopper, Sink Drain, Sink, Shower Door, Shower Converter, Shower, Safe, Retractable Clothes Drying Line, Plug, Toilet Paper Holder,
-    #             Toilet Seat, Toilet Seat Cover, Window, Cleaning Service, Change Beds, Bell Cart, Baggage Storage, Bathroom Refresh, Air Freshener, Water Pressure,
-    #             Clogged Toilet, Water Leak, Wall Hook, TV Remote, TV, Tub Drain, Towel Bar, Water Issue, Night Stand Lamp, Night Stand, Water Kettle, Bathroom Door,
-    #             Bathroom Light, Bathroom, Bar Sink, Air Conditioner, Wheelchair, Umbrella, Bathtub, Toilet Seat Riser, Space Heater, Rollaway Bed, Power Converter,
-    #             Plunger, Makeup Mirror, Bathroom Sink, Bed Frame, Mirror, Fridge, Microwave, Light Switch, Light Bulb, Lamp, Jacuzzi Tub, Heater, Faucet, Bedroom Door,
-    #             Door Battery, Door, Curtain Rod, Closet Door, Chromecast, Chair, Complaint, Dirty Item Pick Up, Luggage Rack, Early Departure, Movie Theater, Marina,
-    #             Meeting Room, Laundry Room, Ice Machine, Gift Shop, Fitness Center, Document Printing, Connect to TV, Call Another Room, Coffee Shop, Closet, Business Center,
-    #             Room Service, Restaurant, Nine One One, Outside Call, Pet Fee, Spa, WiFi Password, Complimentary WiFi, WiFi Connection, Voicemail, Vending Machine, Tennis,
-    #             Snack Cost, Party Policy, Smoking Area, Shuttle Service, Sauna Room, Security Deposit, Quiet Hours, Pool, Lunch Service, Evening Reception, Dinner Service,
-    #             Luggage Assistance, Room Refresh, Room Charge, Room Change, Previous Request, Plumber, Parking, Lost and Found, Sound issues, Laundry and Dry Cleaning,
-    #             Late Check Out, QR Code, Outside Food Delivery, Security, Reservation, Sofa Bed Set Up, Room Smell, Brunch Service, Airport Drop Off, Breakfast Service,
-    #             Lounge, Bar, Ballroom, Atm Machine, Airport Pick Up, Address, Transportation, Wake Up Call, Valet Parking, Vacuum Service, Turndown Service, Towel Exchange,
-    #             Trash Pick Up, Luggage Scale, Ironing Board, TV Channel Guide, Toiletries, Mouthwash, Mini Bar, Mineral Water, Microwavable Food, Medicine, Makeup Remover Wipe,
-    #             Lotion, Laundry Detergent, Ketchup Packet, Hair Spray, Gloves, Floss, First Aid Kit, Feminine Hygiene Products, Face Soap, Nail File, Nail Polish Remover Pad,
-    #             Note Pad, Shoe Shine Kit, Swim Diaper, Soap, Snack, Shower Gel, Shower Cap, Shower Amenity, Shaving Cream, Paper Towel, Shampoo, Sewing Kit, Room Amenity,
-    #             Q-tips, Ponytail Holder, Pen, Face Mask, Disposable Razor, Deodorant, Champagne, Coffee Supplies, Coffee Pod, Coffee Packet, Coffee Creamer, Regular Coffee,
-    #             Cleaning Wipes, Bottled Water, Decaf Coffee, Boiling Water, Bathrobe, Bath Slippers, Band-Aid, Talk To A Person, Hours of Operation, Stir Stick,
-    #             Decaf Coffee Packets, Dental Kit, Paper Cups, Cotton Balls, Contact Case, Conditioner, Comb, Styrofoam Cups, Plastic Cups, Cups, Decaf Coffee Pod,
-    #             Coffee Cup Lid, Coffee Cups, Tea Bag, Sweetener, Sugar Packet, Hot Chocolate, Syrup, Toothbrush, Iron, Toothpaste, Android Charger, Wine Opener, Waste Basket,
-    #             Tv Guide, Trash Bag, Toilet Paper, Tissue Box, Utensils, Shower Curtain, Scotch Tape, Scissors, Room Service Menu, Room Key, Restaurant menu, Playing Cards,
-    #             HDMI Cable, Iphone Charger, Ipod Docking Station, Clock Radio, Handicap Seat, Hair Dryer, Extension Cord, Earbuds, Ear Plugs, Coffee Machine, CD DVD Player,
-    #             Laptop Charger, Box Fan, Battery, Baby Crib, USB Plug, USB Charger Hub, Phone Charger, Nail Clipper, Mattress Pad, Matches, Set of Towels, Blanket, Bedding,
-    #             Bed Spread, Top Sheet, Bed Sheet, Towel, Hand Towel, Duvet, Face Towel, Bath Towel, Bath Mat, Ashtray, Sparkling Water, Vanity Kit, Do Not Disturb Sign,
-    #             Dress Hanger, Laundry Price List, Pillow, Laundry Bag, Ice Bucket Liner, Ice Bucket, Glasses, Gargle Glass, Pillowcase, Non-Allergenic Pillowcase, Hanger,
-    #             Non-Allergenic Pillow, Foam Pillow, Firm Pillow, Feather Pillow, Satin Hanger, Pants Hanger, WiFi Promotional Code"""
-    #     }
-    # ]

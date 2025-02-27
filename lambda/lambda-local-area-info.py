@@ -4,11 +4,12 @@ import urllib3
 import datetime
 import logging
 import time
+import os
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-session = boto3.Session(region_name='us-east-1')
+session = boto3.Session(region_name=os.environ.get('REGION', 'us-east-1'))
 bedrock_client = session.client('bedrock-runtime')
 # MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
 MODEL_ID = "amazon.nova-micro-v1:0"
@@ -72,57 +73,3 @@ def lambda_handler(event, context):
     logger.info(f"{response = }")
 
     return response
-
-
-    # logger.info(f"{type(event) = }")
-
-    # logger.info(f"{event['sessionAttributes'] = }")
-    # logger.info(f"{type(event['sessionAttributes']) = }")
-
-    # logger.info(f"{event['sessionAttributes']['hotel_info'] = }")
-    # logger.info(f"{type(event['sessionAttributes']['hotel_info']) = }")
-
-    # agent = event['agent']
-    # actionGroup = event['actionGroup']
-    # function = event['function']
-    # parameters = event.get('parameters', [])
-
-# event = {'messageVersion': '1.0', 
-# 'function': 'get_info', 
-# 'sessionId': '205154476688820', 
-# 'agent': {'name': 'single-agent', 'version': '5', 'id': 'HYCYYD7WKC', 'alias': 'AAVMKJAUHH'}, 
-# 'actionGroup': 'get_info', 
-# 'sessionAttributes': {'hotel_phone_number': '+16782030501', 'room_number': '123', 
-# 'hotel_info': '{"timezone": "America/New_York", "fd_hour": "Cycle", "fd_start_time": "07:00 AM", "fd_end_time": "07:00 PM", "eng_hour": "Cycle", 
-# "eng_request_time": "tomorrow_08:00 AM", "eng_start_time": "08:00 AM", "eng_end_time": "04:00 PM", "transfer_fo": "+16784336186", 
-# "address": "2401 Bass Pro Drive", 
-# "name": "Embassy Suites by Hilton - DFW Airport North", "city": "Grapevine", "class": "0"}'}, 
-# 'promptSessionAttributes': {}, 
-# 'inputText': 'recommend me good fast food places nearby'}
-
-
-
-    # Execute your business logic here. For more information, refer to: https://docs.aws.amazon.com/bedrock/latest/userguide/agents-lambda.html
-    # responseBody =  {
-    #     "TEXT": {
-    #         "body": "The function {} was called successfully!".format(function),
-    #         # "body": bedrock_response
-    #         "bedrock_response": bedrock_response
-    #     }
-    # }
-
-    # action_response = {
-    #     'actionGroup': actionGroup,
-    #     'function': function,
-    #     'functionResponse': {
-    #         'responseBody': responseBody
-    #         # 'responseBody': bedrock_response
-    #     }
-
-    # }
-
-    #dummy_function_response = {'response': action_response, 'messageVersion': event['messageVersion']}
-    #print("Response: {}".format(dummy_function_response))
-
-
-    #return dummy_function_response
