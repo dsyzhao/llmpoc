@@ -142,7 +142,7 @@ def lambda_handler(event, context):
     logger.info(f"{event = }")
     
     phone_number = event['phoneNumber']
-    bucket = os.environ.get('BUCKET', 'us-east-1') # 'botconfig205154476688v2'
+    bucket = os.environ.get('BUCKET', 'botconfig205154476688v2') # 'botconfig205154476688v2'
     json_service_info = s3_retrieve(phone_number, bucket)
     # available_items = [k for k, v in data.items() if v['Avaliable'] == 'Yes']
     logger.info(f"{json_service_info = }")

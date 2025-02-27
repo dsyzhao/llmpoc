@@ -77,7 +77,7 @@ export class BedrockAgentStack extends cdk.Stack {
         exclude: ['*', '!lambda-ticket-api-call.py']
       }),
       environment: {
-        BUCKET: "",
+        BUCKET: "botconfig205154476688v2",
         REGION: `${this.region}`
       },
       role: new iam.Role(this, 'TicketApiCallLambdaRole', {

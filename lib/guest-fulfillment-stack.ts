@@ -59,7 +59,7 @@ export class GuestFulfillmentStack extends cdk.Stack {
         AGENT_ID: props.bedrockAgentStack.agentId,
         AGENT_ALIAS_ID: props.bedrockAgentStack.agentAliasId,
         REGION: `${this.region}`,
-        BUCKET: "",
+        BUCKET: "botconfig205154476688v2",
       } : {},
       role: new iam.Role(this, 'FulfillmentLambdaRole', {
         roleName: `${props.applicationName}-${props.environment}-stk-iam-role-fulfillment-lambda`,

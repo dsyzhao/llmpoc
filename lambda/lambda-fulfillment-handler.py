@@ -94,7 +94,7 @@ def invoke_agent_helper(query, session_id, agent_id, alias_id, enable_trace=Fals
 @lru_cache(maxsize=128)
 def items_availability(hotel_number: str):
     s3_client = boto3.client('s3')
-    bucket_name = os.environ.get('BUCKET', 'us-east-1') # 'botconfig205154476688v2'
+    bucket_name = os.environ.get('BUCKET', 'botconfig205154476688v2') # 'botconfig205154476688v2'
     file_path = f'{hotel_number}serviceInfo.json'
     try:
         response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
@@ -127,7 +127,7 @@ def items_availability(hotel_number: str):
 def get_hotel_info_from_s3(hotel_number: str):
     try:
         s3_client = boto3.client('s3')
-        bucket_name = os.environ.get('BUCKET', 'us-east-1') # 'botconfig205154476688v2'
+        bucket_name = os.environ.get('BUCKET', 'botconfig205154476688v2') # 'botconfig205154476688v2'
         file_path = 'hotel_number.json'
 
         response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
