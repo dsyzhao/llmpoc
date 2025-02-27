@@ -28,8 +28,12 @@
       "name": "Greetings",
       "description": "This intent is to greet a customer, e.g. \"hello\", \"hi\".",
       "sampleUtterances": [
-        { "utterance": "Hi" },
-        { "utterance": "Hello" }
+        {
+          "utterance": "Hi"
+        },
+        {
+          "utterance": "Hello"
+        }
       ],
       "initialResponseSetting": {
         "codeHook": {
@@ -55,6 +59,30 @@
           "nextStep": {
             "dialogAction": {
               "type": "InvokeDialogCodeHook"
+            }
+          }
+        }
+      },
+      "dialogCodeHook": {
+        "enabled": true
+      },
+      "fulfillmentCodeHook": {
+        "enabled": true,
+        "isActive": true,
+        "postFulfillmentStatusSpecification": {
+          "failureNextStep": {
+            "dialogAction": {
+              "type": "EndConversation"
+            }
+          },
+          "successNextStep": {
+            "dialogAction": {
+              "type": "EndConversation"
+            }
+          },
+          "timeoutNextStep": {
+            "dialogAction": {
+              "type": "EndConversation"
             }
           }
         }
@@ -115,4 +143,4 @@
       }
     }
   ]
-} 
+}

@@ -383,6 +383,19 @@ export class BedrockAgentStack extends cdk.Stack {
     );
 
     // Update local-area-info Lambda Bedrock permissions to specific models
+    ticketApiCall.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:InvokeModel', 'bedrock:Converse'],
+        resources: [
+          // Specific models used in the Lambda
+          `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`,
+          `arn:aws:bedrock:${this.region}::foundation-model/amazon.nova-micro-v1:0`
+        ]
+      })
+    );
+
+    // Update local-area-info Lambda Bedrock permissions to specific models
     localAreaInfoFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,

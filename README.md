@@ -3,7 +3,6 @@
 ```
 ├── bin/
 │   └── app.ts                 # CDK app entry point
-infrastructure
 ├── config/
 │   ├── env-config.json        # AWS/CDK Environment configuration
 │   ├── lex-bot-guest-chat-config.json # Lex bot configuration
@@ -59,13 +58,13 @@ This allows easy deployment to different environments by modifying these values.
 1. Run the following command to configure `aws configure sso`
 2. Url: `https://changethis.awsapps.com/start/#`
 3. Region: `us-east-1`
-4. Profile Name: `hvt-prod`
+4. Profile Name: `hvt-dev`
 5. Select your account
-6. Test: `aws s3 ls  --profile hvt-prod`
+6. Test: `aws s3 ls  --profile hvt-dev`
 
 # Login process
 
-1. `aws --profile hvt-prod sso login`
+1. `aws --profile hvt-dev sso login`
 
 # Install AWS Cli and ssm-session-manager-plugin
 
@@ -82,23 +81,23 @@ npm install
 
 2. Bootstrap CDK (first time only):
 ```bash
-cdk bootstrap --profile hvt-prod
+cdk bootstrap --profile hvt-dev
 ```
 
 3. Synthesize the CloudFormation template:
 ```bash
-cdk synth --profile hvt-prod
+cdk synth --profile hvt-dev
 ```
 
 4. Review changes before deployment:
 ```bash
-cdk diff --profile hvt-prod
+cdk diff --profile hvt-dev
 ```
 Always run `cdk diff` before deploying to review what changes will be made to your infrastructure.
 
 5. Deploy the stack:
 ```bash
-cdk deploy --profile hvt-prod
+cdk deploy --profile hvt-dev
 ```
 
 Note: You should always run `cdk diff` before `cdk deploy` to review the changes that will be made to your infrastructure. This is a crucial step to prevent unintended changes.
