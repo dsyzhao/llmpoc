@@ -104,7 +104,7 @@ export class GuestFulfillmentStack extends cdk.Stack {
     const proxyFunction = new lambda.Function(this, 'ProxyApiHandler', {
       functionName: `${props.applicationName}-${props.environment}-stk-lambda-proxy-api-handler`,
       runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'lambda-proxy-api-handler.lambda_handler',
+      handler: 'lambda-proxy-api-handler.handler',
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
       environment: {
@@ -131,13 +131,15 @@ export class GuestFulfillmentStack extends cdk.Stack {
       resources: [fulfillmentFunction.functionArn]
     }));
 
-    // Add Lex permissions to proxy Lambda
+    // Add Lex permissions to proxy Lambda - use a broader permission scope
     proxyFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['lex:RecognizeText'],
         resources: [
+          // The bot created in our CDK stack
           `arn:aws:lex:${this.region}:${this.account}:bot-alias/${bot.ref}/${botAlias.ref}`,
-          `arn:aws:lex:${this.region}:${this.account}:bot-alias/CLKLPPZYND/PYRKBGNF98`
+          // Allow access to all bot aliases in the account for development/testing
+          `arn:aws:lex:${this.region}:${this.account}:bot-alias/*`
         ]
       })
     );
